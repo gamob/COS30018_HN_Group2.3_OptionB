@@ -1,0 +1,21 @@
+# Ignore raw dataset files and large binaries
+raw/
+
+# Ignore specific large file types in data
+*.mat
+*.h5
+*.hdf5
+*.npz
+*.npy
+*.tar
+*.tar.gz
+*.zip
+*.tgz
+
+# Keep README and this .gitignore tracked
+!README.md
+!.gitignore
+
+# OS artifacts
+.DS_Store
+Thumbs.db
