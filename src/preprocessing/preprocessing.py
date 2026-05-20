@@ -6,6 +6,8 @@ centered, fixed-size output suitable for ML training (e.g. 28x28 arrays).
 """
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
 from typing import Tuple, Union, Iterable
 import os
 
@@ -233,9 +235,57 @@ def _iter_images(input_path: str) -> Iterable[Tuple[str, str]]:
                 yield os.path.join(root, fn), fn
 
 
-if __name__ == "__main__":
-    import argparse
+def _save_steps(steps: dict, save_steps_dir: str, basename: str) -> None:
+    os.makedirs(save_steps_dir, exist_ok=True)
+    base = os.path.splitext(basename)[0]
+    save_array_as_image(steps["grayscale"], os.path.join(save_steps_dir, f"{base}_grayscale.png"))
+    save_array_as_image(steps["binary"], os.path.join(save_steps_dir, f"{base}_binary.png"))
+    save_array_as_image(steps["centered"], os.path.join(save_steps_dir, f"{base}_centered.png"))
+    save_array_as_image(steps["final"], os.path.join(save_steps_dir, f"{base}_final.png"))
 
+
+def process_path(
+    input_path: str,
+    output_path: str,
+    *,
+    size: Tuple[int, int] = (28, 28),
+    method: str = "otsu",
+    blur_ksize: int = 5,
+    adaptive_params: Tuple[int, int] = (15, 7),
+    thresh: int = 128,
+    invert: bool = False,
+    normalize: bool = True,
+    margin: int = 4,
+    save_steps: str | None = None,
+) -> None:
+    output_dir = Path(output_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for in_path, basename in _iter_images(input_path):
+        try:
+            steps = preprocess_image_steps(
+                in_path,
+                size=size,
+                method=method,
+                blur_ksize=blur_ksize,
+                adaptive_params=adaptive_params,
+                thresh=thresh,
+                invert=invert,
+                normalize=normalize,
+                margin=margin,
+            )
+
+            if save_steps:
+                _save_steps(steps, save_steps, basename)
+
+            out_name = os.path.splitext(basename)[0] + ".png"
+            out_path = output_dir / out_name
+            save_array_as_image(steps["final"], str(out_path))
+        except Exception as e:
+            print(f"failed: {in_path} -> {e}")
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(description="Preprocess images into fixed-size arrays")
     parser.add_argument("input", help="Input file or directory")
     parser.add_argument("output", help="Output directory")
@@ -247,39 +297,24 @@ if __name__ == "__main__":
     parser.add_argument("--adaptive-block-size", type=int, default=15, help="Block size for adaptive threshold (odd)")
     parser.add_argument("--adaptive-C", type=int, default=7, help="C parameter for adaptive threshold")
     parser.add_argument("--thresh", type=int, default=128, help="Threshold for simple method")
+    parser.add_argument("--margin", type=int, default=4, help="Pixel margin around resized content")
     parser.add_argument("--save-steps", dest="save_steps", help="Directory to save intermediate images (grayscale,binary,centered,final)", default=None)
     args = parser.parse_args()
 
-    for in_path, basename in _iter_images(args.input):
-        try:
-            if args.save_steps:
-                os.makedirs(args.save_steps, exist_ok=True)
-                steps = preprocess_image_steps(in_path,
-                                               size=tuple(args.size),
-                                               method=args.method,
-                                               blur_ksize=args.blur_ksize,
-                                               adaptive_params=(args.adaptive_block_size, args.adaptive_C),
-                                               thresh=args.thresh,
-                                               invert=args.invert,
-                                               normalize=args.normalize)
-                base = os.path.splitext(basename)[0]
-                save_array_as_image(steps["grayscale"], os.path.join(args.save_steps, f"{base}_grayscale.png"))
-                save_array_as_image(steps["binary"], os.path.join(args.save_steps, f"{base}_binary.png"))
-                save_array_as_image(steps["centered"], os.path.join(args.save_steps, f"{base}_centered.png"))
-                save_array_as_image(steps["final"], os.path.join(args.save_steps, f"{base}_final.png"))
-                out_arr = steps["final"]
-            else:
-                out_arr = preprocess_image(in_path,
-                                           size=tuple(args.size),
-                                           method=args.method,
-                                           blur_ksize=args.blur_ksize,
-                                           adaptive_params=(args.adaptive_block_size, args.adaptive_C),
-                                           thresh=args.thresh,
-                                           invert=args.invert,
-                                           normalize=args.normalize)
+    process_path(
+        args.input,
+        args.output,
+        size=tuple(args.size),
+        method=args.method,
+        blur_ksize=args.blur_ksize,
+        adaptive_params=(args.adaptive_block_size, args.adaptive_C),
+        thresh=args.thresh,
+        invert=args.invert,
+        normalize=args.normalize,
+        margin=args.margin,
+        save_steps=args.save_steps,
+    )
 
-            out_name = os.path.splitext(basename)[0] + ".png"
-            out_path = os.path.join(args.output, out_name)
-            save_array_as_image(out_arr, out_path)
-        except Exception as e:
-            print(f"failed: {in_path} -> {e}")
+
+if __name__ == "__main__":
+    main()

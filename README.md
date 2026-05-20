@@ -34,3 +34,33 @@ We follow a modular structure to allow parallel development as per the project p
 ├── notebook/                # Research & Experimentation logs [cite: 49]
 └── docs/                    # Project Report (8-10 pages) & Presentation Video [cite: 44, 53]
 └── documents/               # Context documents from lectures, canvas pages, ect...
+
+---
+
+## 🚀 Run the Project
+Use the package entry points to run preprocessing, training, prediction, and the GUI in a consistent workflow.
+
+- Preprocess images:
+  ```bash
+  python -m src preprocess data/input_folder output_folder --method otsu --size 28 28
+  ```
+- Train the CNN model on MNIST:
+  ```bash
+  python -m src train --epochs 5
+  ```
+- Predict a single image using the saved model:
+  ```bash
+  python -m src predict data/sample.png
+  ```
+- Launch the GUI:
+  ```bash
+  streamlit run src/gui/app.py
+  ```
+
+## 🔗 Entry-point modules
+The project now supports module-based execution using Python's `-m` switch:
+- `python -m src` — unified workflow runner
+- `python -m src.preprocessing` — preprocessing CLI
+- `python -m src.models.training` — model training
+- `python -m src.models.test` — model evaluation/test harness
+- `python -m src.gui` — prints the GUI launch command

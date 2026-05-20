@@ -11,18 +11,8 @@ from PIL import Image
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
-try:
-    from preprocessing.preprocessing import preprocess_image, preprocess_image_steps
-except Exception:
-    preprocess_image = None
-    preprocess_image_steps = None
-
-try:
-    import torch
-    from models.model import SimpleCNN
-except Exception:
-    torch = None
-    SimpleCNN = None
+from preprocessing.preprocessing import preprocess_image_steps
+from models.model import load_digit_cnn_model
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
@@ -66,41 +56,32 @@ def run_preprocessing(
 
 @st.cache_resource
 def load_trained_model() -> Optional[Tuple[object, Path]]:
-    if torch is None or SimpleCNN is None:
+    model_path = ROOT_DIR / "models" / "digit_cnn_model.h5"
+    if not model_path.exists():
         return None
 
-    # Search folders in the source tree for a .pth file.
-    candidate_files = list(ROOT_DIR.rglob("*.pth"))
-    if not candidate_files:
-        return None
-
-    checkpoint_path = candidate_files[0]
-    model = SimpleCNN(num_classes=10)
-    state = torch.load(checkpoint_path, map_location="cpu")
-    if isinstance(state, dict) and "model_state_dict" in state:
-        state = state["model_state_dict"]
-    model.load_state_dict(state)
-    model.eval()
-    return model, checkpoint_path
+    model = load_digit_cnn_model(model_path)
+    return model, model_path
 
 
 @st.cache_data
 def predict_with_model(processed_array: np.ndarray) -> Tuple[int, float]:
-    if torch is None or SimpleCNN is None:
-        raise RuntimeError("PyTorch is required for model prediction.")
-
     model_data = load_trained_model()
     if model_data is None:
         raise RuntimeError("No trained model checkpoint was found.")
 
     model, _ = model_data
-    tensor = torch.from_numpy(processed_array.astype(np.float32)).unsqueeze(0).unsqueeze(0)
-    with torch.no_grad():
-        outputs = model(tensor)
-        probs = torch.softmax(outputs, dim=1)
-        confidence = float(probs.max().item())
-        prediction = int(probs.argmax(dim=1).item())
+    image = processed_array.astype(np.float32)
+    if image.ndim == 2:
+        image = image[..., np.newaxis]
+    if image.max() > 1.0:
+        image = image / 255.0
 
+    image = np.expand_dims(image, axis=0)
+    outputs = model.predict(image)
+    probs = outputs[0]
+    prediction = int(np.argmax(probs))
+    confidence = float(np.max(probs))
     return prediction, confidence
 
 
@@ -181,7 +162,7 @@ def main() -> None:
         st.markdown("---")
         model_option = st.selectbox(
             "Model to use",
-            ["Mock model", "SimpleCNN (if available)"],
+            ["Mock model", "Keras CNN model"],
         )
 
     current_image_data = get_selected_image(input_mode, uploaded_file, folder_path, folder_images, folder_choice)
@@ -218,18 +199,14 @@ def main() -> None:
         return
 
     result_title = "Prediction result"
-    if model_option == "SimpleCNN (if available)":
-        if torch is None or SimpleCNN is None:
-            st.warning("PyTorch or model code is unavailable. Falling back to the mock model.")
+    if model_option == "Keras CNN model":
+        model_data = load_trained_model()
+        if model_data is None:
+            st.warning("No trained Keras model found in the repository. Falling back to the mock model.")
             model_option = "Mock model"
         else:
-            model_data = load_trained_model()
-            if model_data is None:
-                st.warning("No trained model checkpoint found in the repository. Falling back to the mock model.")
-                model_option = "Mock model"
-            else:
-                checkpoint_path = model_data[1]
-                st.success(f"Loaded trained model from {checkpoint_path}")
+            checkpoint_path = model_data[1]
+            st.success(f"Loaded Keras model from {checkpoint_path}")
 
     if model_option == "Mock model":
         st.subheader(result_title)
@@ -237,7 +214,7 @@ def main() -> None:
         st.info("This is a mock result. Add a trained model checkpoint to use real predictions.")
     else:
         try:
-            prediction, confidence = predict_with_model(steps["final"].astype(np.float32) / 255.0)
+            prediction, confidence = predict_with_model(steps["final"])
             st.subheader(result_title)
             st.metric("Predicted digit", prediction, f"Confidence: {confidence * 100:.1f}%")
         except Exception as error:
