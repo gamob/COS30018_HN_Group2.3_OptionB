@@ -1,9 +1,14 @@
 # Ignore raw dataset files and large binaries
 raw/
 
+# Keep sample part2 visible (do not ignore its contents)
+!sample/part2/
+!sample/part2/**
+!sample/part2/raw/
+!sample/part2/raw/**
+
 # Project-level dataset folders
 dataset/
-train/
 Word_Level_Training_Set/
 
 
