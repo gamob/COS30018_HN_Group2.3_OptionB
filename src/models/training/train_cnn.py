@@ -9,6 +9,10 @@ from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
 
+# If you use the newest version of Tensorflow v2.4 you need to import these below command since Keras intergrated into Tensorflow
+# from tensorflow.keras.datasets import mnist
+# from tensorflow.keras.models import Sequential
+
 MODEL_FILENAME = "digit_cnn_model.h5"
 
 

@@ -7,7 +7,7 @@ import numpy as np
 
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
-    model_path = root / "models" / "digit_cnn_model.h5"
+    model_path = root / "src" / "models" / "digit_cnn_model.h5"
 
     model = load_model(model_path)
     (_, _), (x_test, y_test) = mnist.load_data()

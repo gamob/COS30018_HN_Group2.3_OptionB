@@ -4,15 +4,15 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
-import streamlit as st
+import streamlit as st  
 from PIL import Image
 
 # Allow imports from src/ when running this script via Streamlit
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
-from preprocessing.preprocessing import preprocess_image_steps
-from models.model import load_digit_cnn_model
+from src.preprocessing.preprocessing import preprocess_image_steps
+from src.models.model import load_digit_cnn_model
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 

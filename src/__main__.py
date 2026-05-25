@@ -4,10 +4,9 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
-from preprocessing.preprocessing import process_path
-from preprocessing.preprocessing import preprocess_image_steps
-from models.model import load_digit_cnn_model, predict_digit
-from models.training.train_cnn import train_and_save_model
+from src.preprocessing.preprocessing import process_path, preprocess_image_steps
+from src.models.model import load_digit_cnn_model, predict_digit
+from src.models.training.train_cnn import train_and_save_model
 
 
 def run_preprocess(args: argparse.Namespace) -> None:
