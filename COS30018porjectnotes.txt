@@ -1,0 +1,64 @@
+Dataset to use: 
+MNIST
+
+While the sources do not provide a single fixed number, you must implement multiple different models to allow for a "comprehensive evaluation and comparison"
+
+MLM:
+CNNS
+Need at least 1 more custom approach
+
+
+Milestone 1
+
+Load and display MNIST
+
+Milestone 2
+
+Train CNN
+
+Milestone 3
+
+Reach high accuracy
+
+Milestone 4
+
+Save model
+
+Milestone 5
+
+Predict digits correctly
+
+Once done:
+you officially completed the foundation of Task 3.
+
+
+MOST IMPORTANT PART
+
+For your assignment,
+the strongest scoring combo is probably:
+
+OpenCV + CNN(Keras/TensorFlow)
+
+Because:
+
+OpenCV
+
+handles:
+
+preprocessing
+segmentation
+CNN
+
+handles:
+
+digit recognition
+
+Together:
+they cover almost the ENTIRE project pipeline.
+
+
+notes remember to: rescale the images
+could use logistic regression
+need to test the segmentation
+ueeeeeeeeeh
+
