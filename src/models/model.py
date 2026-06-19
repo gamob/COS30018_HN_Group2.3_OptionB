@@ -4,7 +4,16 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from keras.models import load_model
+try:
+    from keras.models import load_model
+except Exception:
+    try:
+        from tensorflow.keras.models import load_model
+    except Exception:
+        def load_model(*args, **kwargs):
+            raise ImportError(
+                "Keras or TensorFlow is not installed. Install with 'pip install tensorflow' to use model loading."
+            )
 
 MODEL_FILENAME = "digit_cnn_model.h5"
 

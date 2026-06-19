@@ -3,11 +3,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
-from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+try:
+    from keras.datasets import mnist
+    from keras.models import Sequential
+    from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+except Exception:
+    try:
+        from tensorflow.keras.datasets import mnist
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+    except Exception:
+        mnist = None
+        Sequential = None
+        Conv2D = None
+        MaxPooling2D = None
+        Flatten = None
+        Dense = None
 
 # If you use the newest version of Tensorflow v2.4 you need to import these below command since Keras intergrated into Tensorflow
 # from tensorflow.keras.datasets import mnist
@@ -17,6 +29,9 @@ MODEL_FILENAME = "digit_cnn_model.h5"
 
 
 def build_model() -> Sequential:
+    if Sequential is None:
+        raise ImportError("Keras/TensorFlow is not installed. Install with 'pip install tensorflow' to build the model.")
+
     model = Sequential([
         Conv2D(32, (3, 3), activation="relu", input_shape=(28, 28, 1)),
         MaxPooling2D((2, 2)),
@@ -33,6 +48,9 @@ def build_model() -> Sequential:
 
 
 def load_mnist_data() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if mnist is None:
+        raise ImportError("Keras/TensorFlow is not installed. Install with 'pip install tensorflow' to load MNIST data.")
+
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train = x_train.astype(np.float32) / 255.0
     x_test = x_test.astype(np.float32) / 255.0

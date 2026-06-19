@@ -4,11 +4,25 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
-import streamlit as st  
+try:
+    import streamlit as st
+except Exception:
+    class _DummyDecorator:
+        def __call__(self, *args, **kwargs):
+            def _wrap(func):
+                return func
+            return _wrap
+
+    class _DummyStreamlit:
+        cache_resource = _DummyDecorator()
+        cache_data = _DummyDecorator()
+
+    st = _DummyStreamlit()
 from PIL import Image
 
-# Allow imports from src/ when running this script via Streamlit
-ROOT_DIR = Path(__file__).resolve().parents[1]
+# Allow imports from the project root when running this script via Streamlit
+# Set ROOT_DIR to the repository root (two levels up from this file)
+ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT_DIR))
 
 from src.preprocessing.preprocessing import preprocess_image_steps
