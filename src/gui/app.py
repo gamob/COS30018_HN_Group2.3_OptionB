@@ -199,11 +199,12 @@ def main() -> None:
                 adaptive_c=adaptive_c,
                 invert=invert,
             )
-            cols = st.columns(4)
+            cols = st.columns(5)
             cols[0].image(steps["grayscale"], caption="Grayscale", clamp=True)
             cols[1].image(steps["binary"], caption="Binary", clamp=True)
-            cols[2].image(steps["centered"], caption="Centered", clamp=True)
-            cols[3].image(steps["final"], caption="Final 28x28", clamp=True)
+            cols[2].image(steps.get("cleaned", steps["binary"]), caption="Cleaned", clamp=True)
+            cols[3].image(steps["centered"], caption="Centered", clamp=True)
+            cols[4].image(steps["final"], caption="Final 28x28", clamp=True)
         except Exception as error:
             st.warning(f"Preprocessing preview is unavailable: {error}")
 

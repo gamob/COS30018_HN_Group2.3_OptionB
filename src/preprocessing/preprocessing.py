@@ -88,6 +88,23 @@ def binarize_adaptive(gray: np.ndarray, block_size: int = 15, C: int = 7, invert
     return th
 
 
+def morphological_clean(binary: np.ndarray, kernel_size: Tuple[int, int] = (3, 3)) -> np.ndarray:
+    """Apply morphological opening then closing to clean small noise.
+
+    Uses a rectangular structuring element of `kernel_size`. If OpenCV
+    (`cv2`) is not available this function returns the input `binary`
+    unchanged.
+
+    Returns uint8 array with values 0 or 255.
+    """
+    if cv2 is None:
+        return binary
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size)
+    opened = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+    return cleaned
+
+
 def center_and_resize(binary: np.ndarray, size: Tuple[int, int] = (28, 28), margin: int = 4) -> np.ndarray:
     """Crop the binary image to the content bbox, resize while keeping aspect
     ratio, then pad to `size` and center the digit.
@@ -171,7 +188,8 @@ def preprocess_image(path_or_img: Union[str, Image.Image, np.ndarray], *,
     else:
         raise ValueError(f"unknown method: {method}")
 
-    out = center_and_resize(binary, size=size, margin=margin)
+    cleaned = morphological_clean(binary, kernel_size=(3, 3))
+    out = center_and_resize(cleaned, size=size, margin=margin)
     return normalize_array(out) if normalize else out
 
 
@@ -186,7 +204,7 @@ def preprocess_image_steps(path_or_img: Union[str, Image.Image, np.ndarray], *,
                            margin: int = 4) -> dict:
     """Run the pipeline but return intermediate arrays as a dict.
 
-    Returns keys: 'grayscale' (uint8), 'binary' (uint8), 'centered' (uint8), 'final' (float32 if normalized else uint8)
+    Returns keys: 'grayscale' (uint8), 'binary' (uint8), 'cleaned' (uint8), 'centered' (uint8), 'final' (float32 if normalized else uint8)
     """
     if isinstance(path_or_img, np.ndarray):
         gray = path_or_img
@@ -205,9 +223,10 @@ def preprocess_image_steps(path_or_img: Union[str, Image.Image, np.ndarray], *,
     else:
         raise ValueError(f"unknown method: {method}")
 
-    centered = center_and_resize(binary, size=size, margin=margin)
+    cleaned = morphological_clean(binary, kernel_size=(3, 3))
+    centered = center_and_resize(cleaned, size=size, margin=margin)
     final = normalize_array(centered) if normalize else centered
-    return {"grayscale": gray, "binary": binary, "centered": centered, "final": final}
+    return {"grayscale": gray, "binary": binary, "cleaned": cleaned, "centered": centered, "final": final}
 
 
 def save_array_as_image(arr: np.ndarray, out_path: str) -> None:
@@ -240,6 +259,9 @@ def _save_steps(steps: dict, save_steps_dir: str, basename: str) -> None:
     base = os.path.splitext(basename)[0]
     save_array_as_image(steps["grayscale"], os.path.join(save_steps_dir, f"{base}_grayscale.png"))
     save_array_as_image(steps["binary"], os.path.join(save_steps_dir, f"{base}_binary.png"))
+    # save the cleaned intermediate image as well
+    if "cleaned" in steps:
+        save_array_as_image(steps["cleaned"], os.path.join(save_steps_dir, f"{base}_cleaned.png"))
     save_array_as_image(steps["centered"], os.path.join(save_steps_dir, f"{base}_centered.png"))
     save_array_as_image(steps["final"], os.path.join(save_steps_dir, f"{base}_final.png"))
 
