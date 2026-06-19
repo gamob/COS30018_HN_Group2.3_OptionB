@@ -44,6 +44,9 @@ Use the package entry points to run preprocessing, training, prediction, and the
   ```bash
   python -m src preprocess data/input_folder output_folder --method otsu --size 28 28
   ```
+  
+  Preprocessing Task 2: tested on 5+ images from data/sample/part1/image.
+  Outputs are 28×28 PNGs (visually clean and centered); pipeline does not crash on blank or very-dark images.
 - Train the CNN model on MNIST:
   ```bash
   python -m src train --epochs 5
