@@ -1,10 +1,11 @@
-
-from src.models.logistic_model import predict_digit, load_logistic_model
+"""Test LogisticRegression model"""
+from pathlib import Path
 import numpy as np
+import joblib
 
 
 def test_logistic_model():
-
+    """Test that LogisticRegression model works"""
     
     print("=" * 50)
     print("Testing LogisticRegression Model")
@@ -13,41 +14,51 @@ def test_logistic_model():
     # Load model
     print("\n1. Loading model...")
     try:
-        model = load_logistic_model()
-        print("   ✓ Model loaded successfully!")
+        model_path = Path(__file__).resolve().parents[2] / "digit_logistic_model.pkl"
+        print(f"   Looking for model at: {model_path}")
+        
+        if not model_path.exists():
+            print(f"   [FAIL] Model file not found at: {model_path}")
+            return False
+        
+        model = joblib.load(model_path)
+        print("   [OK] Model loaded successfully!")
     except Exception as e:
-        print(f"   ✗ FAILED to load model: {e}")
+        print(f"   [FAIL] Failed to load model: {e}")
         return False
     
     # Create test image
     print("\n2. Creating test image...")
     try:
         dummy_image = np.zeros((28, 28))
-        print(f"   ✓ Test image created (shape: {dummy_image.shape})")
+        print(f"   [OK] Test image created (shape: {dummy_image.shape})")
     except Exception as e:
-        print(f"   ✗ FAILED to create image: {e}")
+        print(f"   [FAIL] Failed to create image: {e}")
         return False
     
     # Make prediction
     print("\n3. Making prediction...")
     try:
-        result = predict_digit(model, dummy_image)
-        print(f"   ✓ Prediction result: {result}")
+        # Flatten image
+        image_flat = dummy_image.reshape(1, -1) / 255.0
+        result = model.predict(image_flat)
+        result = int(result[0])
+        print(f"   [OK] Prediction result: {result}")
         
         # Check if result is valid (should be 0-9)
         if 0 <= result <= 9:
-            print(f"   ✓ Result is valid (digit {result})")
+            print(f"   [OK] Result is valid (digit {result})")
         else:
-            print(f"   ✗ Invalid result (should be 0-9, got {result})")
+            print(f"   [FAIL] Invalid result (should be 0-9, got {result})")
             return False
             
     except Exception as e:
-        print(f"   ✗ FAILED to predict: {e}")
+        print(f"   [FAIL] Failed to predict: {e}")
         return False
     
     # Success!
     print("\n" + "=" * 50)
-    print("✓ ALL TESTS PASSED!")
+    print("[OK] ALL TESTS PASSED!")
     print("=" * 50)
     return True
 

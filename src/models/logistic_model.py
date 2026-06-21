@@ -1,16 +1,16 @@
 from __future__ import annotations
-
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import joblib
 from sklearn.linear_model import LogisticRegression
-from tensorflow.keras.datasets import mnist
 
 
 def load_mnist_data_flat() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load MNIST and flatten images to 784 pixels (28x28 = 784)"""
+    from tensorflow.keras.datasets import mnist
+
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     
     # Flatten from (28, 28) to (784,) and normalize
@@ -21,7 +21,7 @@ def load_mnist_data_flat() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
 
 
 def train_and_save_logistic_model(output_dir: Path) -> None:
-    """Train LogisticRegression on MNIST and save it"""
+    """Train LogisticRegression on MNIST and save it."""
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / "digit_logistic_model.pkl"
 
@@ -43,9 +43,9 @@ def train_and_save_logistic_model(output_dir: Path) -> None:
 
 
 def load_logistic_model(model_path: Optional[str] = None):
-    """Load saved LogisticRegression model"""
+    """Load saved LogisticRegression model."""
     if model_path is None:
-        model_path = Path(__file__).resolve().parent / "digit_logistic_model.pkl"
+        model_path = Path(__file__).resolve().parents[1] / "digit_logistic_model.pkl"
     
     path = Path(model_path)
     if not path.exists():
@@ -74,7 +74,7 @@ def predict_digit(model, image_array: np.ndarray) -> int:
 
 def main() -> None:
     """Train LogisticRegression model"""
-    output_dir = Path(__file__).resolve().parents[1]  # src/models/ path
+    output_dir = Path(__file__).resolve().parents[1]
     train_and_save_logistic_model(output_dir)
 
 
