@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+
 try:
     from keras.datasets import mnist
     from keras.models import Sequential
@@ -13,7 +14,7 @@ except Exception:
         from tensorflow.keras.datasets import mnist
         from tensorflow.keras.models import Sequential
         from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
-    except Exception:
+    except Exception: 
         mnist = None
         Sequential = None
         Conv2D = None

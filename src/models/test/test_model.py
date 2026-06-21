@@ -1,7 +1,18 @@
 from pathlib import Path
 
-from keras.models import load_model
-from keras.datasets import mnist
+try: 
+    from keras.models import load_model  
+    from keras.datasets import mnist  
+except Exception:
+    try:
+        from tensorflow.keras.models import load_model  
+        from tensorflow.keras.datasets import mnist
+    except Exception:
+        def load_model(*args, **kwargs):
+            raise ImportError(
+                "Keras or TensorFlow is not installed. Install with 'pip install tensorflow' to use model loading."
+            )
+        mnist = None
 import numpy as np
 
 
