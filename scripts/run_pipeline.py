@@ -48,7 +48,7 @@ def run_preprocess(input_dir: Path, output_dir: Path, **kwargs) -> None:
     preproc.process_path(str(input_dir), str(output_dir), **kwargs)
 
 
-def run_segmentation(input_dir: Path, output_dir: Path, method: str = "connected_components") -> None:
+def run_segmentation(input_dir: Path, output_dir: Path, method: str = "connected_components", digit_size: int = 28) -> None:
     import cv2
 
     input_dir = Path(input_dir)
@@ -67,7 +67,7 @@ def run_segmentation(input_dir: Path, output_dir: Path, method: str = "connected
             print(f"failed to read {img_path}; skipping")
             continue
 
-        digits = seg.segment_and_preprocess(img, method=method)
+        digits = seg.segment_and_preprocess(img, method=method, size=(digit_size, digit_size))
         base = img_path.stem
         for idx, d in enumerate(digits, 1):
             out_path = output_dir / f"{base}_digit{idx}.png"
@@ -86,6 +86,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=None, help="random seed for sampling")
     p.add_argument("--seg-method", choices=("connected_components", "projection"), default="connected_components")
     p.add_argument("--no-normalize", action="store_true", help="disable normalization in preprocessing (save uint8 images)")
+    p.add_argument("--size", type=int, nargs=2, default=(128, 128), help="preprocess output size (width height)")
+    p.add_argument("--digit-size", type=int, default=64, help="size (square) for segmented digit images")
     return p.parse_args()
 
 
@@ -102,7 +104,7 @@ def main() -> None:
 
     # Step 2: preprocess part1 -> part2
     preproc_opts = dict(
-        size=(28, 28),
+        size=tuple(args.size),
         method="otsu",
         blur_ksize=5,
         adaptive_params=(15, 7),
@@ -115,7 +117,7 @@ def main() -> None:
     run_preprocess(part1_dir, part2_dir, **preproc_opts)
 
     # Step 3: segmentation part2 -> part3
-    run_segmentation(part2_dir, part3_dir, method=args.seg_method)
+    run_segmentation(part2_dir, part3_dir, method=args.seg_method, digit_size=args.digit_size)
 
 
 if __name__ == "__main__":
