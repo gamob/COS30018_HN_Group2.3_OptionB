@@ -14,7 +14,7 @@ def test_logistic_model():
     # Load model
     print("\n1. Loading model...")
     try:
-        model_path = Path(__file__).resolve().parents[2] / "digit_logistic_model.pkl"
+        model_path = Path(__file__).resolve().parents[2] / "models" / "digit_logistic_model.pkl"
         print(f"   Looking for model at: {model_path}")
         
         if not model_path.exists():
