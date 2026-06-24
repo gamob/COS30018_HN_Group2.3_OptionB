@@ -43,9 +43,6 @@ def crop_to_content(region: np.array) -> np.array:
 def split_region_horizontally(region: np.array):
     """
     Attempt to split a wide region into separate digits using vertical projection.
-
-    Returns a list of (x_offset, subregion) tuples, where x_offset is the
-    column offset relative to the original region.
     """
     projection = np.sum(region, axis=0)
     max_val = np.max(projection)
@@ -83,9 +80,8 @@ def split_region_horizontally(region: np.array):
 
 def segment_digits(clean_image: np.array) -> list[np.array]:
     """
-    Segments a cleaned image into individual digit images using connected components.
-
-    This function extracts each digit region and then splits wide regions if needed.
+    Technique 1: Connected Components with Smart Horizontal Splitting.
+    Finds isolated white blobs, and splits them if they are too wide.
     """
     thresh = binarize_image(clean_image)
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thresh, connectivity=8)
@@ -108,39 +104,33 @@ def segment_digits(clean_image: np.array) -> list[np.array]:
     digit_images = [crop_to_content(region) for _, region in digit_regions]
     return digit_images
 
+
 def segment_digits_projection(clean_image: np.array) -> list[np.array]:
     """
-    Alternative Technique 2: Horizontal Projection for Segmentation.
-
-    This method uses vertical projection to find gaps between digits.
-    Assumes digits are separated horizontally and not touching.
-
-    Args:
-        clean_image (np.array): A binary image array.
-
-    Returns:
-        list[np.array]: List of digit images.
+    Technique 2: Pure Vertical Projection Segmentation.
+    Looks for gaps/valleys of empty space across columns to slice digits apart.
     """
-    # Ensure binary
     if clean_image.dtype != np.uint8:
         clean_image = (clean_image * 255).astype(np.uint8)
     if len(clean_image.shape) == 3:
         clean_image = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
+    
+    # Notice: This assumes dark text on light background; inverting gives white on black
     _, thresh = cv2.threshold(clean_image, 127, 255, cv2.THRESH_BINARY_INV)
 
-    # Vertical projection: sum along columns (horizontal projection across image)
     projection = np.sum(thresh, axis=0)
+    max_proj = np.max(projection)
+    
+    # Defensive check: if image is completely blank, avoid bad thresholds
+    if max_proj == 0:
+        return []
 
-    # Find gaps (where projection is low, indicating space between digits)
-    threshold = np.max(projection) * 0.05  # 5% of max as gap threshold
+    threshold = max_proj * 0.05
     gap_indices = np.where(projection < threshold)[0]
 
-    # Group consecutive gaps to find digit boundaries
     if len(gap_indices) == 0:
-        # No gaps, treat as one digit
         digit_images = [thresh]
     else:
-        # Find start and end of each digit
         digit_boundaries = []
         start = 0
         for i in range(1, len(gap_indices)):
@@ -150,21 +140,91 @@ def segment_digits_projection(clean_image: np.array) -> list[np.array]:
                 start = gap_indices[i]
         end = gap_indices[-1]
         digit_boundaries.append((start, end))
-        # Last digit to end of image
         digit_boundaries.append((gap_indices[-1] + 1, thresh.shape[1] - 1))
 
         digit_images = []
         for start_col, end_col in digit_boundaries:
             digit = thresh[:, start_col:end_col+1]
-            # Crop vertically to remove empty rows
             col_sums = np.sum(digit, axis=1)
             if np.any(col_sums > 0):
                 y_min = np.where(col_sums > 0)[0][0]
                 y_max = np.where(col_sums > 0)[0][-1]
                 digit = digit[y_min:y_max+1, :]
-            digit_images.append(digit)
+            if digit.size > 0 and np.any(digit):
+                digit_images.append(digit)
 
     return digit_images
+
+
+def preprocess_image(digit_img: np.array) -> np.array:
+    """
+    Preprocess a single digit image: pad to square, resize to 28x28, normalize to float32.
+    """
+    if digit_img is None or digit_img.size == 0:
+        return np.zeros((28, 28), dtype=np.float32)
+
+    h, w = digit_img.shape[:2]
+    if h == 0 or w == 0:
+        return np.zeros((28, 28), dtype=np.float32)
+
+    if h > w:
+        pad_left = (h - w) // 2
+        pad_right = h - w - pad_left
+        digit_img = cv2.copyMakeBorder(digit_img, 0, 0, pad_left, pad_right, cv2.BORDER_CONSTANT, value=0)
+    elif w > h:
+        pad_top = (w - h) // 2
+        pad_bottom = w - h - pad_top
+        digit_img = cv2.copyMakeBorder(digit_img, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=0)
+
+    resized = cv2.resize(digit_img, (28, 28), interpolation=cv2.INTER_AREA)
+    return resized.astype(np.float32) / 255.0
+
+
+def segment_and_preprocess(image: np.array, method: str = "connected_components") -> list[np.array]:
+    """
+    Unified pipeline execution.
+    Args:
+        image: Input source image matrix.
+        method: Either 'connected_components' or 'projection'.
+    """
+    if image is None or image.size == 0:
+        return []
+
+    if method == "connected_components":
+        raw_digits = segment_digits(image)
+    elif method == "projection":
+        raw_digits = segment_digits_projection(image)
+    else:
+        raise ValueError(f"Unknown segmentation method: {method}")
+
+    return [preprocess_image(digit) for digit in raw_digits]
+
+
+def print_comparison_note():
+    """
+    Prints an architectural engineering comparison summary between the techniques.
+    """
+    note = """
+================================================================================
+🔬 ARCHITECTURAL COMPARISON: CONNECTED COMPONENTS VS. PROJECTION
+================================================================================
+Which is better? -> WINNER: Connected Components (Technique 1)
+
+WHY?
+1. Noise Immunity: Connected Components filters out small stray marks using an 
+   'area threshold' (area < 50 pixels). Pure projection gets confused by random 
+   specks because any noise creates a column peak, ruining your slice boundaries.
+2. Background Independence: Technique 1 uses an adaptive binarize function that 
+   automatically handles both dark-on-light or light-on-dark text. Technique 2 
+   hardcodes cv2.THRESH_BINARY_INV, meaning it flips behavior if input styles change.
+3. Overlapping Protection: Technique 1 actively looks for extra-wide blobs and 
+   proactively runs sub-segmentation logic to cut them apart. 
+
+Conclusion: Technique 1 is vastly more stable and production-ready!
+================================================================================
+"""
+    print(note)
+
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -172,51 +232,63 @@ if __name__ == "__main__":
     raw_dir = os.path.join(base_data_dir, "raw")
     processed_dir = os.path.join(base_data_dir, "processed")
 
-    # Ensure raw directory exists
     os.makedirs(raw_dir, exist_ok=True)
-
-    # Rebuild processed directory on each run
     if os.path.exists(processed_dir):
         shutil.rmtree(processed_dir)
     os.makedirs(processed_dir, exist_ok=True)
 
-    # Find all image files in data/segmentation/raw
+    # Gather any real images if they happen to exist
     image_extensions = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tiff"]
     image_files = []
     for ext in image_extensions:
         image_files.extend(glob.glob(os.path.join(raw_dir, ext)))
 
-    if not image_files:
-        print(f"No image files found in {raw_dir}. Please add some images to test.")
-        # Fallback to test image
-        print("Creating test image...")
-        img = np.zeros((100, 200), dtype=np.uint8)
-        cv2.putText(img, "456", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, 255, 3)
-        digits = segment_digits(img)
-        print(f"Test segmented into {len(digits)} digits")
-        fallback_dir = os.path.join(processed_dir, "test_image")
-        os.makedirs(fallback_dir, exist_ok=True)
-        for i, digit in enumerate(digits, start=1):
-            output_path = os.path.join(fallback_dir, f"digit_{i}.png")
-            cv2.imwrite(output_path, digit)
-            print(f"Saved {output_path}")
-    else:
-        for image_path in image_files:
-            print(f"Processing {image_path}...")
-            img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                print(f"Failed to load {image_path}")
-                continue
+    # Create synthetic local samples so the fresher can test immediately without data files!
+    samples = {}
+    
+    # Sample A: 3 Digits
+    img_3 = np.zeros((100, 200), dtype=np.uint8)
+    cv2.putText(img_3, "456", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, 255, 3)
+    samples["3_digits_sample"] = img_3
+    
+    # Sample B: 1 Digit
+    img_1 = np.zeros((100, 200), dtype=np.uint8)
+    cv2.putText(img_1, "7", (80, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, 255, 3)
+    samples["1_digit_sample"] = img_1
 
-            # Use contour detection as default
-            digits = segment_digits(img)
-            base_name = os.path.splitext(os.path.basename(image_path))[0]
-            image_output_dir = os.path.join(processed_dir, base_name)
-            os.makedirs(image_output_dir, exist_ok=True)
+    # Sample C: 0 Digits (Completely Empty Canvas!)
+    img_0 = np.zeros((100, 200), dtype=np.uint8)
+    samples["0_digits_blank_sample"] = img_0
 
-            for i, digit in enumerate(digits, start=1):
-                output_path = os.path.join(image_output_dir, f"digit_{i}.png")
-                cv2.imwrite(output_path, digit)
-                print(f"Saved {output_path}")
+    print(f"✨ Created {len(samples)} synthetic test cases to verify stability.")
 
-            print(f"Processed {image_path}: {len(digits)} digits extracted into {image_output_dir}.")
+    # If real images exist, add them to our execution queue
+    for path in image_files:
+        base = os.path.splitext(os.path.basename(path))[0]
+        real_img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        if real_img is not None:
+            samples[f"real_{base}"] = real_img
+
+    # Execute BOTH methods side-by-side on the exact same dataset images
+    for name, img_matrix in samples.items():
+        print(f"\nEvaluating profile: '{name}'")
+        
+        # Test Method 1: Connected Components
+        digits_cc = segment_and_preprocess(img_matrix, method="connected_components")
+        cc_dir = os.path.join(processed_dir, name, "connected_components")
+        os.makedirs(cc_dir, exist_ok=True)
+        for idx, d in enumerate(digits_cc, 1):
+            cv2.imwrite(os.path.join(cc_dir, f"digit_{idx}.png"), (d * 255).astype(np.uint8))
+            
+        # Test Method 2: Projection Slicing
+        digits_proj = segment_and_preprocess(img_matrix, method="projection")
+        proj_dir = os.path.join(processed_dir, name, "projection")
+        os.makedirs(proj_dir, exist_ok=True)
+        for idx, d in enumerate(digits_proj, 1):
+            cv2.imwrite(os.path.join(proj_dir, f"digit_{idx}.png"), (d * 255).astype(np.uint8))
+
+        print(f" -> Connected Components extracted: {len(digits_cc)} digits. (No Crash!)")
+        print(f" -> Projection Slicing extracted:    {len(digits_proj)} digits. (No Crash!)")
+
+    # Print out our review notes!
+    print_comparison_note()
