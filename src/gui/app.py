@@ -70,7 +70,7 @@ def run_preprocessing(
 
 @st.cache_resource
 def load_trained_model() -> Optional[Tuple[object, Path]]:
-    model_path = ROOT_DIR / "models" / "digit_cnn_model.h5"
+    model_path = ROOT_DIR / "src" / "models" / "digit_cnn_model.h5"
     if not model_path.exists():
         return None
 

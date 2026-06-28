@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seg-method", choices=("connected_components", "projection"), default="connected_components")
     p.add_argument("--no-normalize", action="store_true", help="disable normalization in preprocessing (save uint8 images)")
     p.add_argument("--size", type=int, nargs=2, default=(128, 128), help="preprocess output size (width height)")
-    p.add_argument("--digit-size", type=int, default=64, help="size (square) for segmented digit images")
+    p.add_argument("--digit-size", type=int, default=28, help="size (square) for segmented digit images")
     return p.parse_args()
 
 

@@ -31,9 +31,8 @@ We follow a modular structure to allow parallel development as per the project p
 │   ├── models/              # Task 3: ML Model Training & Logic [cite: 26]
 │   └── gui/                 # GUI Implementation [cite: 17]
 ├── data/                    # Dataset storage (MNIST) [cite: 15]
-├── notebook/                # Research & Experimentation logs [cite: 49]
-└── docs/                    # Project Report (8-10 pages) & Presentation Video [cite: 44, 53]
-└── documents/               # Context documents from lectures, canvas pages, ect...
+├── documents/               # Project reports, assignment brief, and review notes
+└── documents/week*-reports/ # Weekly progress documentation and report drafts
 
 ---
 
