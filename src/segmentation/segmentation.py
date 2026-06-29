@@ -3,6 +3,7 @@ import numpy as np
 import os
 import glob
 import shutil
+from typing import Tuple, List
 
 def binarize_image(image: np.array) -> np.array:
     """
@@ -156,17 +157,23 @@ def segment_digits_projection(clean_image: np.array) -> list[np.array]:
     return digit_images
 
 
-def preprocess_image(digit_img: np.array) -> np.array:
+def preprocess_image(digit_img: np.array, size: Tuple[int, int] = (28, 28)) -> np.array:
     """
-    Preprocess a single digit image: pad to square, resize to 28x28, normalize to float32.
+    Preprocess a single digit image: pad to square, resize to `size`, normalize to float32.
+
+    Uses interpolation heuristics to preserve detail: `INTER_AREA` when downscaling,
+    `INTER_LANCZOS4` when upscaling.
     """
+    target_w, target_h = size
+
     if digit_img is None or digit_img.size == 0:
-        return np.zeros((28, 28), dtype=np.float32)
+        return np.zeros((target_h, target_w), dtype=np.float32)
 
     h, w = digit_img.shape[:2]
     if h == 0 or w == 0:
-        return np.zeros((28, 28), dtype=np.float32)
+        return np.zeros((target_h, target_w), dtype=np.float32)
 
+    # Pad to square keeping content centered
     if h > w:
         pad_left = (h - w) // 2
         pad_right = h - w - pad_left
@@ -176,11 +183,15 @@ def preprocess_image(digit_img: np.array) -> np.array:
         pad_bottom = w - h - pad_top
         digit_img = cv2.copyMakeBorder(digit_img, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=0)
 
-    resized = cv2.resize(digit_img, (28, 28), interpolation=cv2.INTER_AREA)
+    # Choose interpolation based on scaling factor
+    scale = min(target_w / max(1, digit_img.shape[1]), target_h / max(1, digit_img.shape[0]))
+    interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LANCZOS4
+
+    resized = cv2.resize(digit_img, (target_w, target_h), interpolation=interp)
     return resized.astype(np.float32) / 255.0
 
 
-def segment_and_preprocess(image: np.array, method: str = "connected_components") -> list[np.array]:
+def segment_and_preprocess(image: np.array, method: str = "connected_components", size: Tuple[int, int] = (28, 28)) -> List[np.array]:
     """
     Unified pipeline execution.
     Args:
@@ -197,7 +208,7 @@ def segment_and_preprocess(image: np.array, method: str = "connected_components"
     else:
         raise ValueError(f"Unknown segmentation method: {method}")
 
-    return [preprocess_image(digit) for digit in raw_digits]
+    return [preprocess_image(digit, size=size) for digit in raw_digits]
 
 
 def print_comparison_note():
