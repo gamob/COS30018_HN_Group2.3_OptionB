@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import joblib
 
+from src.models.logistic_model import load_logistic_model
+
 
 def test_logistic_model():
     """Test that LogisticRegression model works"""
@@ -61,6 +63,11 @@ def test_logistic_model():
     print("[OK] ALL TESTS PASSED!")
     print("=" * 50)
     return True
+
+
+def test_default_logistic_model_path_loads():
+    model = load_logistic_model()
+    assert model is not None
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ def train_and_save_logistic_model(output_dir: Path) -> None:
 def load_logistic_model(model_path: Optional[str] = None):
     """Load saved LogisticRegression model."""
     if model_path is None:
-        model_path = Path(__file__).resolve().parents[1] / "digit_logistic_model.pkl"
+        model_path = Path(__file__).resolve().parent / "digit_logistic_model.pkl"
     
     path = Path(model_path)
     if not path.exists():
@@ -74,7 +74,7 @@ def predict_digit(model, image_array: np.ndarray) -> int:
 
 def main() -> None:
     """Train LogisticRegression model"""
-    output_dir = Path(__file__).resolve().parents[1]
+    output_dir = Path(__file__).resolve().parent
     train_and_save_logistic_model(output_dir)
 
 
