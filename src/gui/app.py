@@ -263,7 +263,8 @@ def main() -> None:
     )
 
     with st.sidebar:
-        st.header("Input & Controls")
+        st.markdown("<h3 style='margin:0; padding:0;'>Input & Controls</h3>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top:-0.75rem'></div>", unsafe_allow_html=True)
         input_mode = st.radio("Select input method:", ["Upload image file", "Load from folder"])
 
         uploaded_file = None
@@ -288,20 +289,26 @@ def main() -> None:
                 else:
                     st.warning("No image files found in the entered folder.")
 
-        st.markdown("---")
-        st.subheader("Preprocessing settings")
-        preprocess_method = st.selectbox("Binarization method", ["otsu", "simple", "adaptive"], index=0)
-        thresh = st.slider("Threshold (simple)", min_value=0, max_value=255, value=128)
-        blur_ksize = st.slider("Blur kernel size (Otsu)", min_value=1, max_value=21, value=5, step=2)
-        adaptive_block = st.slider("Adaptive block size", min_value=3, max_value=51, value=15, step=2)
-        adaptive_c = st.slider("Adaptive C value", min_value=0, max_value=25, value=7)
-        invert = st.checkbox("Invert foreground/background", value=False)
-
-        st.markdown("---")
+        st.markdown("<div style='margin-top:-0.4rem'></div>", unsafe_allow_html=True)
+        st.subheader("Model & Prediction")
         model_option = st.selectbox(
             "Model to use",
             MODEL_OPTIONS,
         )
+        should_predict = st.button("Run prediction", type="primary")
+        st.markdown("<div style='margin-top:-0.2rem'></div>", unsafe_allow_html=True)
+        st.subheader("Preprocessing settings")
+        preprocess_method = st.selectbox("Binarization method", ["otsu", "simple", "adaptive"], index=0)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            thresh = st.slider("Threshold (simple)", min_value=0, max_value=255, value=128)
+            adaptive_block = st.slider("Adaptive block size", min_value=3, max_value=51, value=15, step=2)
+        with col2:
+            blur_ksize = st.slider("Blur kernel size (Otsu)", min_value=1, max_value=21, value=5, step=2)
+            adaptive_c = st.slider("Adaptive C value", min_value=0, max_value=25, value=7)
+
+        invert = st.checkbox("Invert foreground/background", value=False)
 
     current_image_data = get_selected_image(input_mode, uploaded_file, folder_path, folder_images, folder_choice)
     if current_image_data is None:
@@ -310,7 +317,7 @@ def main() -> None:
 
     image, image_source, preprocess_input = current_image_data
     st.subheader("Input image")
-    st.image(image, caption=f"Source: {image_source}", use_column_width=True)
+    st.image(image, caption=f"Source: {image_source}", width="stretch")
 
     with st.expander("Preprocessing preview"):
         try:
@@ -332,7 +339,6 @@ def main() -> None:
         except Exception as error:
             st.warning(f"Preprocessing preview is unavailable: {error}")
 
-    should_predict = st.sidebar.button("Run prediction")
     if not should_predict:
         st.info("Click 'Run prediction' in the sidebar to see a result.")
         return
@@ -392,7 +398,7 @@ def main() -> None:
             cols = st.columns(len(segmented_results))
             for idx, (thumb, label, _) in enumerate(segmented_results, start=1):
                 with cols[idx - 1]:
-                    st.image(thumb, caption=f"Digit {idx}", use_column_width=True)
+                    st.image(thumb, caption=f"Digit {idx}", width="stretch")
                     st.caption(label)
     
 
