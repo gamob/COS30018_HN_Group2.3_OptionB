@@ -31,6 +31,7 @@ We follow a modular structure to allow parallel development as per the project p
 │   ├── models/              # Task 3: ML Model Training & Logic [cite: 26]
 │   └── gui/                 # GUI Implementation [cite: 17]
 ├── data/                    # Dataset storage (MNIST) [cite: 15]
+├── notebooks/               # Project documentation and experiment planning
 ├── documents/               # Project reports, assignment brief, and review notes
 └── documents/week*-reports/ # Weekly progress documentation and report drafts
 
@@ -58,6 +59,15 @@ Use the package entry points to run preprocessing, training, prediction, and the
   ```bash
   streamlit run src/gui/app.py
   ```
+
+## 📓 Notebook Documentation
+The project documentation notebook is available at:
+
+```text
+notebooks/hnrs_project_documentation.ipynb
+```
+
+It explains the project workflow, component roles, known limitations, suggested fixes, and recommended experiments for preprocessing, segmentation, model comparison, and end-to-end evaluation.
 
 ## 🔗 Entry-point modules
 The project now supports module-based execution using Python's `-m` switch:
