@@ -22,6 +22,14 @@ from src.preprocessing import preprocessing as preproc
 from src.segmentation import segmentation as seg
 
 
+def get_image_files(folder: Path) -> list[Path]:
+    """Get all image files from folder."""
+    if not folder.exists():
+        return []
+    exts = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+    return sorted([p for p in folder.iterdir() if p.suffix.lower() in exts and p.is_file()])
+
+
 def select_images(source_dir: Path, dst_dir: Path, n: int = 30, seed: int | None = None) -> int:
     source_dir = Path(source_dir)
     dst_dir = Path(dst_dir)
@@ -99,8 +107,12 @@ def main() -> None:
     part2_dir = Path(args.part2)
     part3_dir = Path(args.part3)
 
-    # Step 1: prepare part1 (sample N images)
-    select_images(src_dir, part1_dir, n=args.n, seed=args.seed)
+    # Step 1: prepare part1 (sample N images only if not already curated)
+    part1_files = get_image_files(part1_dir) if part1_dir.exists() else []
+    if not part1_files:
+        select_images(src_dir, part1_dir, n=args.n, seed=args.seed)
+    else:
+        print(f"Skipping resampling: {len(part1_files)} images already in {part1_dir}")
 
     # Step 2: preprocess part1 -> part2
     preproc_opts = dict(
