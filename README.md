@@ -37,7 +37,7 @@ We follow a modular structure to allow parallel development as per the project p
 
 
 
-## 🚀 Run the Project
+##  Run the Project
 Use the package entry points to run preprocessing, training, prediction, and the GUI in a consistent workflow.
 
 - Preprocess images:
