@@ -1,23 +1,23 @@
-# 🖋️ Handwritten Number Recognition System (HNRS)
-**Course:** COS30018 - Intelligent Systems (Swinburne University of Technology)  
-**Assignment:** Project Assignment - Option B [cite: 2, 3]  
-**Due Date:** 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]  
+#  Handwritten Number Recognition System (HNRS)
+Course: COS30018 - Intelligent Systems (Swinburne University of Technology)  
+Assignment: Project Assignment - Option B [cite: 2, 3]  
+Due Date: 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]  
 
----
 
-## 🌟 Project Overview
+
+##  Project Overview
 This project implements a system capable of recognizing handwritten numbers through a multi-stage pipeline[cite: 8, 11]. It goes beyond simple digit recognition by handling multi-digit construction and (as an extension) simple arithmetic expressions[cite: 11, 35].
 
-### 🎯 Key Objectives
-* **Image Acquisition:** Loading individual images or auto-creating images from folders[cite: 20].
-* **Preprocessing:** Standardizing input via grayscaling and resizing[cite: 21].
-* **Segmentation:** Partitioning multi-digit numbers into individual digits[cite: 25].
-* **Classification:** Using Machine Learning (CNNs and other models) to recognize digits[cite: 26, 28].
-* **GUI:** Providing a user-friendly interface to control hyper-parameters and visualize results[cite: 17, 18].
+###  Key Objectives
+ Image Acquisition: Loading individual images or auto-creating images from folders[cite: 20].
+ Preprocessing: Standardizing input via grayscaling and resizing[cite: 21].
+ Segmentation: Partitioning multi-digit numbers into individual digits[cite: 25].
+ Classification: Using Machine Learning (CNNs and other models) to recognize digits[cite: 26, 28].
+ GUI: Providing a user-friendly interface to control hyper-parameters and visualize results[cite: 17, 18].
 
----
 
-## 📂 Repository Structure
+
+##  Repository Structure
 We follow a modular structure to allow parallel development as per the project plan[cite: 65].
 
 ```text
@@ -33,9 +33,9 @@ We follow a modular structure to allow parallel development as per the project p
 ├── data/                    # Dataset storage (MNIST) [cite: 15]
 ├── notebooks/               # Project documentation and experiment planning
 ├── documents/               # Project reports, assignment brief, and review notes
-└── documents/week*-reports/ # Weekly progress documentation and report drafts
+└── documents/week-reports/ # Weekly progress documentation and report drafts
 
----
+
 
 ## 🚀 Run the Project
 Use the package entry points to run preprocessing, training, prediction, and the GUI in a consistent workflow.
@@ -60,7 +60,7 @@ Use the package entry points to run preprocessing, training, prediction, and the
   streamlit run src/gui/app.py
   ```
 
-## 📓 Notebook Documentation
+##  Notebook Documentation
 The project documentation notebook is available at:
 
 ```text
@@ -69,7 +69,7 @@ notebooks/hnrs_project_documentation.ipynb
 
 It explains the project workflow, component roles, known limitations, suggested fixes, and recommended experiments for preprocessing, segmentation, model comparison, and end-to-end evaluation.
 
-## 🔗 Entry-point modules
+##  Entry-point modules
 The project now supports module-based execution using Python's `-m` switch:
 - `python -m src` — unified workflow runner
 - `python -m src.preprocessing` — preprocessing CLI
