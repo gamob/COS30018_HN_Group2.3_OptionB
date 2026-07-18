@@ -88,32 +88,47 @@ The project now supports module-based execution using Python's `-m` switch:
 
 ### CNN Model (Convolutional Neural Network)
 
-| Task | Command | Details |
+| Task | Command | Example |
 |------|---------|---------|
-| **Train** | `python -m src train --epochs 5` | Default 5 epochs; saves to `src/models/digit_cnn_model.h5` |
-| **Train** | `python -m src train --epochs 10 --output-dir ./models` | Custom epochs and output directory |
-| **Test** | `python src/models/test/test_model.py` | Loads model and evaluates on MNIST test set |
-| **Predict** | `python -m src predict image.png` | Predicts single digit; auto-preprocesses with Otsu |
-| **Predict** | `python -m src predict image.png --method adaptive --blur-ksize 7` | Custom preprocessing before prediction |
+| **Train** | `python -m src train --epochs 5` | `python -m src train --epochs 10` |
+| **Train** | `python -m src train --epochs <N> --output-dir <path>` | `python -m src train --epochs 8 --output-dir ./models` |
+| **Test** | `python src/models/test/test_model.py` | `python src/models/test/test_model.py` |
+| **Predict** | `python -m src predict <image>` | `python -m src predict data/digit.png` |
+| **Predict** | `python -m src predict <image> --method <method>` | `python -m src predict data/digit.png --method otsu` |
+| **Predict** | `python -m src predict <image> --method adaptive --blur-ksize <N>` | `python -m src predict data/digit.png --method adaptive --blur-ksize 7` |
+
+**Details:** Saves to `src/models/digit_cnn_model.h5`; default 5 epochs; expects 28×28 preprocessed images.
+
+---
 
 ### Logistic Regression Model
 
-| Task | Command | Details |
+| Task | Command | Example |
 |------|---------|---------|
-| **Train** | `python src/models/logistic_model.py` | Trains on MNIST; flattens 28×28 to 784 features; saves to `src/models/digit_logistic_model.pkl` |
-| **Test** | `python src/models/test/test_logistic.py` | Verifies model loads and predicts correctly |
-| **Predict** | `python -m src predict image.png` | Same as CNN CLI (select model in code or GUI) |
+| **Train** | `python src/models/logistic_model.py` | `python src/models/logistic_model.py` |
+| **Test** | `python src/models/test/test_logistic.py` | `python src/models/test/test_logistic.py` |
+| **Predict** | `python -m src predict <image>` | `python -m src predict data/digit.png` |
+| **Predict** | `python -m src predict <image> --method <method>` | `python -m src predict data/digit.png --method simple` |
+
+**Details:** Saves to `src/models/digit_logistic_model.pkl`; flattens 28×28 to 784 features; expected accuracy ~92%.
+
+---
 
 ### SVM Model (Support Vector Machine with RBF kernel)
 
-| Task | Command | Details |
+| Task | Command | Example |
 |------|---------|---------|
-| **Train** | `python src/models/svm_model.py` | Default: 15,000 stratified samples, C=10.0; saves model and metrics |
-| **Train** | `python src/models/svm_model.py --max-train-samples 0` | Train on all 60,000 samples (slower) |
-| **Train** | `python src/models/svm_model.py --C 50.0 --gamma 0.001` | Custom hyperparameters |
-| **Test** | `python src/models/test/test_svm.py` | Runs stratified sample and prediction tests |
-| **Predict** | `python -m src predict-svm image.png` | Predicts using SVM model; auto-preprocesses |
-| **Predict** | `python -m src predict-svm image.png --method simple` | Predict with simple thresholding (no OpenCV) |
+| **Train** | `python src/models/svm_model.py` | `python src/models/svm_model.py` |
+| **Train** | `python src/models/svm_model.py --max-train-samples <N>` | `python src/models/svm_model.py --max-train-samples 0` |
+| **Train** | `python src/models/svm_model.py --C <val> --gamma <val>` | `python src/models/svm_model.py --C 50.0 --gamma 0.001` |
+| **Test** | `python src/models/test/test_svm.py` | `python src/models/test/test_svm.py` |
+| **Predict** | `python -m src predict-svm <image>` | `python -m src predict-svm data/digit.png` |
+| **Predict** | `python -m src predict-svm <image> --method <method>` | `python -m src predict-svm data/digit.png --method simple` |
+| **Predict** | `python -m src predict-svm <image> --method adaptive --adaptive-block-size <N>` | `python -m src predict-svm data/digit.png --method adaptive --adaptive-block-size 21` |
+
+**Details:** Default 15,000 stratified samples; C=10.0; saves model and metrics JSON; use `--max-train-samples 0` for all 60,000 (slower).
+
+---
 
 ### Python API Examples
 
@@ -122,6 +137,7 @@ The project now supports module-based execution using Python's `-m` switch:
 from src.models.model import load_digit_cnn_model, predict_digit
 model = load_digit_cnn_model("src/models/digit_cnn_model.h5")
 prediction = predict_digit(model, preprocessed_image)  # 28×28, normalized 0-1
+print(f"Predicted digit: {prediction}")
 ```
 
 **Logistic Prediction:**
@@ -129,6 +145,7 @@ prediction = predict_digit(model, preprocessed_image)  # 28×28, normalized 0-1
 from src.models.logistic_model import load_logistic_model, predict_digit
 model = load_logistic_model("src/models/digit_logistic_model.pkl")
 prediction = predict_digit(model, preprocessed_image)  # 28×28, any range
+print(f"Predicted digit: {prediction}")
 ```
 
 **SVM Prediction:**
@@ -136,7 +153,10 @@ prediction = predict_digit(model, preprocessed_image)  # 28×28, any range
 from src.models.svm_model import load_svm_model, predict_digit
 model = load_svm_model("src/models/digit_svm_model.pkl")
 prediction = predict_digit(model, preprocessed_image)  # 28×28, any range
+print(f"Predicted digit: {prediction}")
 ```
+
+---
 
 ### Default Model Paths
 
