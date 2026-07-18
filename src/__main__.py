@@ -7,6 +7,11 @@ from typing import Optional
 from src.preprocessing.preprocessing import process_path, preprocess_image_steps
 from src.models.model import load_digit_cnn_model, predict_digit
 from src.models.training.train_cnn import train_and_save_model
+from src.models.svm_model import (
+    load_svm_model,
+    predict_digit as predict_svm_digit,
+    train_and_save_svm_model,
+)
 
 
 def run_preprocess(args: argparse.Namespace) -> None:
@@ -30,6 +35,14 @@ def run_train(args: argparse.Namespace) -> None:
     train_and_save_model(output_dir, epochs=args.epochs)
 
 
+def run_train_svm(args: argparse.Namespace) -> None:
+    train_and_save_svm_model(
+        Path(args.output_dir),
+        max_train_samples=None if args.max_train_samples == 0 else args.max_train_samples,
+        C=args.C,
+    )
+
+
 def run_predict(args: argparse.Namespace) -> None:
     model = load_digit_cnn_model(args.model_path)
     steps = preprocess_image_steps(
@@ -45,6 +58,23 @@ def run_predict(args: argparse.Namespace) -> None:
     )
     prediction = predict_digit(model, steps["final"])
     print(f"Predicted digit: {prediction}")
+
+
+def run_predict_svm(args: argparse.Namespace) -> None:
+    model = load_svm_model(args.model_path)
+    steps = preprocess_image_steps(
+        args.image_path,
+        size=(28, 28),
+        method=args.method,
+        blur_ksize=args.blur_ksize,
+        adaptive_params=(args.adaptive_block_size, args.adaptive_C),
+        thresh=args.thresh,
+        invert=args.invert,
+        normalize=False,
+        margin=args.margin,
+    )
+    prediction = predict_svm_digit(model, steps["final"])
+    print(f"SVM predicted digit: {prediction}")
 
 
 def run_gui(_: argparse.Namespace) -> None:
@@ -75,6 +105,12 @@ def main(argv: Optional[list[str]] = None) -> None:
     train_parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parents[1] / "models"))
     train_parser.set_defaults(func=run_train)
 
+    svm_parser = subparsers.add_parser("train-svm", help="Train the RBF SVM baseline")
+    svm_parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parent / "models"))
+    svm_parser.add_argument("--max-train-samples", type=int, default=15000)
+    svm_parser.add_argument("--C", type=float, default=10.0)
+    svm_parser.set_defaults(func=run_train_svm)
+
     predict_parser = subparsers.add_parser("predict", help="Predict a digit image using the saved model")
     predict_parser.add_argument("image_path", help="Image file to predict")
     predict_parser.add_argument("--model-path", default=None)
@@ -86,6 +122,18 @@ def main(argv: Optional[list[str]] = None) -> None:
     predict_parser.add_argument("--invert", action="store_true")
     predict_parser.add_argument("--margin", type=int, default=4)
     predict_parser.set_defaults(func=run_predict)
+
+    predict_svm_parser = subparsers.add_parser("predict-svm", help="Predict one digit using the trained SVM")
+    predict_svm_parser.add_argument("image_path", help="Path to a single digit image")
+    predict_svm_parser.add_argument("--model-path", default=None)
+    predict_svm_parser.add_argument("--method", choices=("otsu", "simple", "adaptive"), default="otsu")
+    predict_svm_parser.add_argument("--blur-ksize", type=int, default=5)
+    predict_svm_parser.add_argument("--adaptive-block-size", type=int, default=15)
+    predict_svm_parser.add_argument("--adaptive-C", type=int, default=7)
+    predict_svm_parser.add_argument("--thresh", type=int, default=128)
+    predict_svm_parser.add_argument("--invert", action="store_true")
+    predict_svm_parser.add_argument("--margin", type=int, default=4)
+    predict_svm_parser.set_defaults(func=run_predict_svm)
 
     gui_parser = subparsers.add_parser("gui", help="Show GUI launch instructions")
     gui_parser.set_defaults(func=run_gui)

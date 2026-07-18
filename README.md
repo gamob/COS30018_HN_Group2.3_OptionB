@@ -51,6 +51,12 @@ Use the package entry points to run preprocessing, training, prediction, and the
   ```bash
   python -m src train --epochs 5
   ```
+- Train the SVM baseline on a reproducible, stratified MNIST subset (for model comparison):
+  ```bash
+  python -m src train-svm --max-train-samples 15000
+  ```
+  This creates `src/models/digit_svm_model.pkl` and `src/models/digit_svm_metrics.json`. Use
+  `--max-train-samples 0` to train on all 60,000 images; this can take substantially longer.
 - Predict a single image using the saved model:
   ```bash
   python -m src predict data/sample.png

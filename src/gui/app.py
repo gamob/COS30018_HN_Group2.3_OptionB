@@ -36,10 +36,12 @@ from src.preprocessing.preprocessing import preprocess_image_steps, preprocess_i
 from src.models.model import load_digit_cnn_model
 from src.models.logistic_model import load_logistic_model as load_digit_logistic_model
 from src.models.logistic_model import predict_digit as predict_logistic_digit
+from src.models.svm_model import load_svm_model as load_digit_svm_model
+from src.models.svm_model import predict_digit as predict_svm_digit
 from src.segmentation.segmentation import segment_digits
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
-MODEL_OPTIONS = ["Mock model", "Keras CNN model", "Logistic model"]
+MODEL_OPTIONS = ["Mock model", "Keras CNN model", "Logistic model", "RBF SVM model"]
 
 
 def find_images_from_folder(folder_path: str) -> List[Path]:
@@ -97,6 +99,19 @@ def load_logistic_model() -> Optional[Tuple[object, Path]]:
 
     try:
         model = load_digit_logistic_model(model_path)
+    except Exception:
+        return None
+    return model, model_path
+
+
+@st.cache_resource
+def load_svm_model() -> Optional[Tuple[object, Path]]:
+    model_path = ROOT_DIR / "src" / "models" / "digit_svm_model.pkl"
+    if not model_path.exists():
+        return None
+
+    try:
+        model = load_digit_svm_model(model_path)
     except Exception:
         return None
     return model, model_path
@@ -173,6 +188,16 @@ def predict_with_model(processed_array: np.ndarray, model_option: str) -> Tuple[
 
         prediction = predict_logistic_digit(model, image)
         prediction = postprocess_prediction_for_ambiguous_digits(prediction, image)
+        return prediction, None
+
+    if model_option == "RBF SVM model":
+        model_data = load_svm_model()
+        if model_data is None:
+            raise RuntimeError("No trained RBF SVM model checkpoint was found.")
+
+        model, _ = model_data
+        prediction = predict_svm_digit(model, processed_array)
+        prediction = postprocess_prediction_for_ambiguous_digits(prediction, processed_array)
         return prediction, None
 
     raise RuntimeError(f"Unsupported model option: {model_option}")
@@ -360,6 +385,14 @@ def main() -> None:
         else:
             checkpoint_path = model_data[1]
             st.success(f"Loaded Logistic model from {checkpoint_path}")
+    elif model_option == "RBF SVM model":
+        model_data = load_svm_model()
+        if model_data is None:
+            st.warning("No trained RBF SVM model found in the repository. Falling back to the mock model.")
+            model_option = "Mock model"
+        else:
+            checkpoint_path = model_data[1]
+            st.success(f"Loaded RBF SVM model from {checkpoint_path}")
 
     segmented_results = get_segmented_digit_predictions(
         steps["cleaned"],
