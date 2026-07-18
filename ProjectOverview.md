@@ -6,7 +6,7 @@ Due Date: 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]
 
 
 ##  Project Overview
-This project implements a system capable of recognizing handwritten numbers through a multi-stage pipeline[cite: 8, 11]. It goes beyond simple digit recognition by handling multi-digit construction and (as an extension) simple arithmetic expressions[cite: 11, 35].
+This project implements a system capable of recognizing handwritten numbers through a multi-stage pipeline[cite: 8, 11]. It goes beyond simple digit recognition by handling multi-digit construction[...]
 
 ###  Key Objectives
  Image Acquisition: Loading individual images or auto-creating images from folders[cite: 20].
@@ -34,6 +34,7 @@ We follow a modular structure to allow parallel development as per the project p
 ├── notebooks/               # Project documentation and experiment planning
 ├── documents/               # Project reports, assignment brief, and review notes
 └── documents/week-reports/ # Weekly progress documentation and report drafts
+```
 
 
 
@@ -82,3 +83,66 @@ The project now supports module-based execution using Python's `-m` switch:
 - `python -m src.models.training` — model training
 - `python -m src.models.test` — model evaluation/test harness
 - `python -m src.gui` — prints the GUI launch command
+
+##  ML Model Commands
+
+### CNN Model (Convolutional Neural Network)
+
+| Task | Command | Details |
+|------|---------|---------|
+| **Train** | `python -m src train --epochs 5` | Default 5 epochs; saves to `src/models/digit_cnn_model.h5` |
+| **Train** | `python -m src train --epochs 10 --output-dir ./models` | Custom epochs and output directory |
+| **Test** | `python src/models/test/test_model.py` | Loads model and evaluates on MNIST test set |
+| **Predict** | `python -m src predict image.png` | Predicts single digit; auto-preprocesses with Otsu |
+| **Predict** | `python -m src predict image.png --method adaptive --blur-ksize 7` | Custom preprocessing before prediction |
+
+### Logistic Regression Model
+
+| Task | Command | Details |
+|------|---------|---------|
+| **Train** | `python src/models/logistic_model.py` | Trains on MNIST; flattens 28×28 to 784 features; saves to `src/models/digit_logistic_model.pkl` |
+| **Test** | `python src/models/test/test_logistic.py` | Verifies model loads and predicts correctly |
+| **Predict** | `python -m src predict image.png` | Same as CNN CLI (select model in code or GUI) |
+
+### SVM Model (Support Vector Machine with RBF kernel)
+
+| Task | Command | Details |
+|------|---------|---------|
+| **Train** | `python src/models/svm_model.py` | Default: 15,000 stratified samples, C=10.0; saves model and metrics |
+| **Train** | `python src/models/svm_model.py --max-train-samples 0` | Train on all 60,000 samples (slower) |
+| **Train** | `python src/models/svm_model.py --C 50.0 --gamma 0.001` | Custom hyperparameters |
+| **Test** | `python src/models/test/test_svm.py` | Runs stratified sample and prediction tests |
+| **Predict** | `python -m src predict-svm image.png` | Predicts using SVM model; auto-preprocesses |
+| **Predict** | `python -m src predict-svm image.png --method simple` | Predict with simple thresholding (no OpenCV) |
+
+### Python API Examples
+
+**CNN Prediction:**
+```python
+from src.models.model import load_digit_cnn_model, predict_digit
+model = load_digit_cnn_model("src/models/digit_cnn_model.h5")
+prediction = predict_digit(model, preprocessed_image)  # 28×28, normalized 0-1
+```
+
+**Logistic Prediction:**
+```python
+from src.models.logistic_model import load_logistic_model, predict_digit
+model = load_logistic_model("src/models/digit_logistic_model.pkl")
+prediction = predict_digit(model, preprocessed_image)  # 28×28, any range
+```
+
+**SVM Prediction:**
+```python
+from src.models.svm_model import load_svm_model, predict_digit
+model = load_svm_model("src/models/digit_svm_model.pkl")
+prediction = predict_digit(model, preprocessed_image)  # 28×28, any range
+```
+
+### Default Model Paths
+
+| Model | Path | Format |
+|-------|------|--------|
+| CNN | `src/models/digit_cnn_model.h5` | HDF5 |
+| Logistic | `src/models/digit_logistic_model.pkl` | Pickle |
+| SVM | `src/models/digit_svm_model.pkl` | Pickle |
+| SVM Metrics | `src/models/digit_svm_metrics.json` | JSON |
