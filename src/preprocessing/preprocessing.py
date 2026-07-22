@@ -109,8 +109,6 @@ def center_and_resize(binary: np.ndarray, size: Tuple[int, int] = (28, 28), marg
     """Crop the binary image to the content bbox, resize while keeping aspect
     ratio, then pad to `size` and center the digit.
 
-    Input `binary` should be uint8 with 0/255 values.
-    Returns uint8 array with shape `size` and values 0/255.
     """
     h, w = binary.shape
     ys, xs = np.where(binary > 0)
