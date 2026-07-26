@@ -1,14 +1,14 @@
-# 🖋️ Handwritten Number Recognition System (HNRS)
+#  Handwritten Number Recognition System (HNRS)
 **Course:** COS30018 - Intelligent Systems [cite: 1]  
 **Due Date:** 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]  
 **Team:** [Group of 3-4 Students] [cite: 6]
 
 ---
 
-## 🛠️ Universal Integration Protocol
+##  Universal Integration Protocol
 To ensure that our individual "scraps" (Tasks 1, 2, 3, and GUI) match up perfectly during the final integration phase (Task 4), all team members **must** adhere to these interface standards. [cite: 66, 60]
 
-### 📋 The Data Flow Pipeline
+###  The Data Flow Pipeline
 We use **NumPy arrays** as our universal language. The data must flow as follows:
 
 | Stage | Component | Input Format | Output Format | Responsible Member |
@@ -20,7 +20,7 @@ We use **NumPy arrays** as our universal language. The data must flow as follows
 
 ---
 
-## 📂 Detailed Module Requirements
+##  Detailed Module Requirements
 
 ### 1. Image Preprocessing (`src/preprocessing/`)
 * **Goal:** Research/experiment with at least 2 techniques (e.g., grayscaling, binarization, resizing). [cite: 21, 59]
@@ -37,7 +37,7 @@ We use **NumPy arrays** as our universal language. The data must flow as follows
 
 ---
 
-## 🚦 Weekly Progress & GitHub Rules
+##  Weekly Progress & GitHub Rules
 * **Individual Contribution:** Every student must contribute code and/or documents AND commit to GitHub weekly. Failure to do so will result in a penalty (up to -80 marks!). [cite: 67]
 * **Branching:** Work in your specific folder (`src/task_name/`). Use branches for major changes.
 * **Testing:** Each module should include a `if __name__ == "__main__":` block to demonstrate it works independently before integration. [cite: 60]
@@ -45,5 +45,5 @@ We use **NumPy arrays** as our universal language. The data must flow as follows
 
 ---
 
-## 🌟 Extensions (Aiming for D/HD)
+##  Extensions (Aiming for D/HD)
 We are aiming for **Extension Option 2**: Recognition of simple arithmetic expressions (digits $0-9$ and $+$, $-$, $*$, $/$, $(, )$) and calculating the result. [cite: 35, 67]
