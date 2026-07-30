@@ -50,7 +50,7 @@ The interface supports image input from file upload or from selecting a folder, 
 From the project root, execute:
 
 ```bash
-\.venv\Scripts\streamlit.exe run src/gui/app.py
+streamlit run src/gui/app.py
 ```
 
 Then open the URL shown by Streamlit (typically `http://localhost:8501`).
