@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Optional
 
 from src.preprocessing.preprocessing import process_path, preprocess_image_steps
-from src.models.model import load_digit_cnn_model, predict_digit
-from src.models.training.train_cnn import train_and_save_model
+from src.models.model import load_digit_cnn_model, load_letter_cnn_model, predict_digit, predict_letter
+from src.models.training.train_cnn import train_and_save_digit_model, train_and_save_letter_model
 from src.models.svm_model import (
     load_svm_model,
     predict_digit as predict_svm_digit,
@@ -32,7 +32,16 @@ def run_preprocess(args: argparse.Namespace) -> None:
 
 def run_train(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
-    train_and_save_model(output_dir, epochs=args.epochs)
+    train_and_save_digit_model(output_dir, epochs=args.epochs)
+
+
+def run_train_letters(args: argparse.Namespace) -> None:
+    output_dir = Path(args.output_dir)
+    train_and_save_letter_model(
+        output_dir,
+        epochs=args.epochs,
+        data_dir=Path(args.data_dir),
+    )
 
 
 def run_train_svm(args: argparse.Namespace) -> None:
@@ -77,6 +86,23 @@ def run_predict_svm(args: argparse.Namespace) -> None:
     print(f"SVM predicted digit: {prediction}")
 
 
+def run_predict_letter(args: argparse.Namespace) -> None:
+    model = load_letter_cnn_model(args.model_path)
+    steps = preprocess_image_steps(
+        args.image_path,
+        size=(28, 28),
+        method=args.method,
+        blur_ksize=args.blur_ksize,
+        adaptive_params=(args.adaptive_block_size, args.adaptive_C),
+        thresh=args.thresh,
+        invert=args.invert,
+        normalize=True,
+        margin=args.margin,
+    )
+    prediction = predict_letter(model, steps["final"])
+    print(f"Predicted letter: {prediction}")
+
+
 def run_gui(_: argparse.Namespace) -> None:
     print("Launch the GUI with: streamlit run src/gui/app.py")
 
@@ -100,10 +126,16 @@ def main(argv: Optional[list[str]] = None) -> None:
     preprocess_parser.add_argument("--save-steps", default=None)
     preprocess_parser.set_defaults(func=run_preprocess)
 
-    train_parser = subparsers.add_parser("train", help="Train the CNN model")
+    train_parser = subparsers.add_parser("train", help="Train the digit CNN model on MNIST")
     train_parser.add_argument("--epochs", type=int, default=5)
-    train_parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parents[1] / "models"))
+    train_parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parent / "models"))
     train_parser.set_defaults(func=run_train)
+
+    train_letters_parser = subparsers.add_parser("train-letters", help="Train the CNN model on handwritten letters")
+    train_letters_parser.add_argument("--epochs", type=int, default=3)
+    train_letters_parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parent / "models"))
+    train_letters_parser.add_argument("--data-dir", default=str(Path(__file__).resolve().parents[1] / "data" / "letters"))
+    train_letters_parser.set_defaults(func=run_train_letters)
 
     svm_parser = subparsers.add_parser("train-svm", help="Train the RBF SVM baseline")
     svm_parser.add_argument("--output-dir", default=str(Path(__file__).resolve().parent / "models"))
@@ -134,6 +166,18 @@ def main(argv: Optional[list[str]] = None) -> None:
     predict_svm_parser.add_argument("--invert", action="store_true")
     predict_svm_parser.add_argument("--margin", type=int, default=4)
     predict_svm_parser.set_defaults(func=run_predict_svm)
+
+    predict_letter_parser = subparsers.add_parser("predict-letter", help="Predict a letter image using the trained letter CNN")
+    predict_letter_parser.add_argument("image_path", help="Path to a single letter image")
+    predict_letter_parser.add_argument("--model-path", default=str(Path(__file__).resolve().parent / "models" / "letter_cnn_model.h5"))
+    predict_letter_parser.add_argument("--method", choices=("otsu", "simple", "adaptive"), default="otsu")
+    predict_letter_parser.add_argument("--blur-ksize", type=int, default=5)
+    predict_letter_parser.add_argument("--adaptive-block-size", type=int, default=15)
+    predict_letter_parser.add_argument("--adaptive-C", type=int, default=7)
+    predict_letter_parser.add_argument("--thresh", type=int, default=128)
+    predict_letter_parser.add_argument("--invert", action="store_true")
+    predict_letter_parser.add_argument("--margin", type=int, default=4)
+    predict_letter_parser.set_defaults(func=run_predict_letter)
 
     gui_parser = subparsers.add_parser("gui", help="Show GUI launch instructions")
     gui_parser.set_defaults(func=run_gui)

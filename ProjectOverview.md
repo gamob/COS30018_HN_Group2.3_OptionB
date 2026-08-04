@@ -1,4 +1,4 @@
-#  Handwritten Number Recognition System (HNRS)
+# Handwritten Letter and Number Recognition System (HNRS)
 Course: COS30018 - Intelligent Systems (Swinburne University of Technology)  
 Assignment: Project Assignment - Option B [cite: 2, 3]  
 Due Date: 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]  
@@ -6,13 +6,13 @@ Due Date: 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]
 
 
 ##  Project Overview
-This project implements a system capable of recognizing handwritten numbers through a multi-stage pipeline[cite: 8, 11]. It goes beyond simple digit recognition by handling multi-digit construction[...]
+This project implements separate CNN pipelines for handwritten A-Z letters and handwritten digits. The GUI selects the appropriate model, preserves letter word segmentation, and supports multi-digit construction and recognition.[cite: 8, 11]
 
 ###  Key Objectives
  Image Acquisition: Loading individual images or auto-creating images from folders[cite: 20].
  Preprocessing: Standardizing input via grayscaling and resizing[cite: 21].
  Segmentation: Partitioning multi-digit numbers into individual digits[cite: 25].
- Classification: Using Machine Learning (CNNs and other models) to recognize digits[cite: 26, 28].
+ Classification: Using separate letter and digit CNNs, with Logistic Regression and RBF SVM retained as digit baselines.[cite: 26, 28].
  GUI: Providing a user-friendly interface to control hyper-parameters and visualize results[cite: 17, 18].
 
 
@@ -52,6 +52,10 @@ Use the package entry points to run preprocessing, training, prediction, and the
   ```bash
   python -m src train --epochs 5
   ```
+- Train the letter CNN from `data/letters`:
+  ```bash
+  python -m src train-letters --epochs 15
+  ```
 - Train the SVM baseline on a reproducible, stratified MNIST subset (for model comparison):
   ```bash
   python -m src train-svm --max-train-samples 15000
@@ -61,6 +65,10 @@ Use the package entry points to run preprocessing, training, prediction, and the
 - Predict a single image using the saved model:
   ```bash
   python -m src predict data/sample.png
+  ```
+- Predict a single letter using the saved letter model:
+  ```bash
+  python -m src predict-letter data/letters/test/A/000000.png
   ```
 - Launch the GUI:
   ```bash
@@ -95,6 +103,8 @@ The project now supports module-based execution using Python's `-m` switch:
 | **Test** | `python src/models/test/test_model.py` | Loads model and evaluates on MNIST test set |
 | **Predict** | `python -m src predict "data\sample\test\1.png"` | Predicts single digit; auto-preprocesses with Otsu |
 | **Predict** | `python -m src predict "data\sample\test\1.png" --method adaptive --blur-ksize 7` | Custom preprocessing before prediction |
+| **Train letters** | `python -m src train-letters --epochs 15` | Saves `letter_cnn_model.h5` and its A-Z class mapping |
+| **Predict letter** | `python -m src predict-letter "data\letters\test\A\000000.png"` | Predicts one A-Z letter with the letter CNN |
 
 ### Logistic Regression Model
 
@@ -117,11 +127,18 @@ The project now supports module-based execution using Python's `-m` switch:
 
 ### Python API Examples
 
-**CNN Prediction:**
+**Digit CNN Prediction:**
 ```python
 from src.models.model import load_digit_cnn_model, predict_digit
 model = load_digit_cnn_model("src/models/digit_cnn_model.h5")
 prediction = predict_digit(model, preprocessed_image)  # 28×28, normalized 0-1
+```
+
+**Letter CNN Prediction:**
+```python
+from src.models.model import load_letter_cnn_model, predict_letter
+model = load_letter_cnn_model("src/models/letter_cnn_model.h5")
+prediction = predict_letter(model, preprocessed_image)  # Returns A-Z
 ```
 
 **Logistic Prediction:**
@@ -142,7 +159,9 @@ prediction = predict_digit(model, preprocessed_image)  # 28×28, any range
 
 | Model | Path | Format |
 |-------|------|--------|
-| CNN | `src/models/digit_cnn_model.h5` | HDF5 |
+| Digit CNN | `src/models/digit_cnn_model.h5` | HDF5 |
+| Letter CNN | `src/models/letter_cnn_model.h5` | HDF5 |
+| Letter class mapping | `src/models/letter_class_mapping.json` | JSON |
 | Logistic | `src/models/digit_logistic_model.pkl` | Pickle |
 | SVM | `src/models/digit_svm_model.pkl` | Pickle |
 | SVM Metrics | `src/models/digit_svm_metrics.json` | JSON |

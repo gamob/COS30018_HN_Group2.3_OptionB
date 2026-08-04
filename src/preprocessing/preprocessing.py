@@ -25,10 +25,13 @@ def load_image(path_or_pil: Union[str, Image.Image]) -> Image.Image:
 
     Returns an RGB PIL Image.
     """
-    if isinstance(path_or_pil, Image.Image):
-        return path_or_pil.convert("RGB")
-    path = str(path_or_pil)
-    img = Image.open(path)
+    img = path_or_pil if isinstance(path_or_pil, Image.Image) else Image.open(str(path_or_pil))
+    # Preserve black strokes exported on a transparent canvas by flattening
+    # transparency onto a white page before grayscale conversion.
+    if "A" in img.getbands():
+        rgba = img.convert("RGBA")
+        background = Image.new("RGBA", rgba.size, "white")
+        return Image.alpha_composite(background, rgba).convert("RGB")
     return img.convert("RGB")
 
 
@@ -38,6 +41,33 @@ def to_grayscale(img: Image.Image) -> np.ndarray:
     Shape: (H, W), dtype: uint8
     """
     return np.array(img.convert("L"), dtype=np.uint8)
+
+
+def normalize_polarity(gray: np.ndarray) -> tuple[np.ndarray, bool]:
+    """Standardize a grayscale image to bright ink on a dark background.
+
+    EMNIST letters use white foreground strokes on a black background. Text
+    images are expected to contain more background than ink, so the dominant
+    light/dark pixel group is treated as the background. This avoids relying
+    on border pixels, which can be misleading for framed or tightly cropped
+    images.
+
+    Returns the normalized uint8 image and whether inversion was applied.
+    """
+    image = np.asarray(gray)
+    if image.ndim != 2:
+        raise ValueError("normalize_polarity expects a 2D grayscale image")
+    if image.size == 0:
+        return image.astype(np.uint8), False
+
+    if np.issubdtype(image.dtype, np.floating) and float(np.nanmax(image)) <= 1.0:
+        image = image * 255.0
+    image = np.nan_to_num(image, nan=0.0, posinf=255.0, neginf=0.0)
+    image = np.clip(image, 0, 255).astype(np.uint8)
+
+    light_fraction = float(np.count_nonzero(image > 127)) / float(image.size)
+    should_invert = light_fraction > 0.5
+    return (255 - image if should_invert else image), should_invert
 
 
 def _ensure_cv2():
@@ -89,7 +119,7 @@ def binarize_adaptive(gray: np.ndarray, block_size: int = 15, C: int = 7, invert
 
 
 def morphological_clean(binary: np.ndarray, kernel_size: Tuple[int, int] = (3, 3)) -> np.ndarray:
-    """Apply morphological opening then closing to clean small noise.
+    """Conservatively close small gaps without erasing thin strokes.
 
     Uses a rectangular structuring element of `kernel_size`. If OpenCV
     (`cv2`) is not available this function returns the input `binary`
@@ -99,10 +129,8 @@ def morphological_clean(binary: np.ndarray, kernel_size: Tuple[int, int] = (3, 3
     """
     if cv2 is None:
         return binary
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size)
-    opened = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-    cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
-    return cleaned
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, kernel_size)
+    return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
 
 
 def center_and_resize(binary: np.ndarray, size: Tuple[int, int] = (28, 28), margin: int = 4) -> np.ndarray:
@@ -172,19 +200,23 @@ def preprocess_image(path_or_img: Union[str, Image.Image, np.ndarray], *,
     if isinstance(path_or_img, np.ndarray):
         gray = path_or_img
     else:
-        pil = load_image(path_or_img) if not isinstance(path_or_img, Image.Image) else path_or_img
+        pil = load_image(path_or_img)
         gray = to_grayscale(pil)
 
     method = method.lower()
     if method == "simple":
-        binary = binarize_threshold(gray, thresh=thresh, invert=invert)
+        binary = binarize_threshold(gray, thresh=thresh, invert=False)
     elif method == "otsu":
-        binary = binarize_otsu(gray, blur_ksize=blur_ksize, invert=invert)
+        binary = binarize_otsu(gray, blur_ksize=blur_ksize, invert=False)
     elif method == "adaptive":
         block_size, C = adaptive_params
-        binary = binarize_adaptive(gray, block_size=block_size, C=C, invert=invert)
+        binary = binarize_adaptive(gray, block_size=block_size, C=C, invert=False)
     else:
         raise ValueError(f"unknown method: {method}")
+
+    binary, _ = normalize_polarity(binary)
+    if invert:
+        binary = 255 - binary
 
     cleaned = morphological_clean(binary, kernel_size=(3, 3))
     out = center_and_resize(cleaned, size=size, margin=margin)
@@ -207,19 +239,23 @@ def preprocess_image_steps(path_or_img: Union[str, Image.Image, np.ndarray], *,
     if isinstance(path_or_img, np.ndarray):
         gray = path_or_img
     else:
-        pil = load_image(path_or_img) if not isinstance(path_or_img, Image.Image) else path_or_img
+        pil = load_image(path_or_img)
         gray = to_grayscale(pil)
 
     method = method.lower()
     if method == "simple":
-        binary = binarize_threshold(gray, thresh=thresh, invert=invert)
+        binary = binarize_threshold(gray, thresh=thresh, invert=False)
     elif method == "otsu":
-        binary = binarize_otsu(gray, blur_ksize=blur_ksize, invert=invert)
+        binary = binarize_otsu(gray, blur_ksize=blur_ksize, invert=False)
     elif method == "adaptive":
         block_size, C = adaptive_params
-        binary = binarize_adaptive(gray, block_size=block_size, C=C, invert=invert)
+        binary = binarize_adaptive(gray, block_size=block_size, C=C, invert=False)
     else:
         raise ValueError(f"unknown method: {method}")
+
+    binary, _ = normalize_polarity(binary)
+    if invert:
+        binary = 255 - binary
 
     cleaned = morphological_clean(binary, kernel_size=(3, 3))
     centered = center_and_resize(cleaned, size=size, margin=margin)

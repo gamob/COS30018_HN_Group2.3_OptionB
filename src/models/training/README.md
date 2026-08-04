@@ -1,45 +1,38 @@
+# CNN Training Workflows
 
+The project uses two independent CNN classifiers because digits and letters have different output spaces and datasets.
 
-### Machine Learning Model Workflow (Task 3)
-This workflow handles the training, evaluation, and saving of the Convolutional Neural Network (CNN) used to recognize individual digits.
+## Digit CNN
 
-#### 1. Dataset Acquisition & Preprocessing
-The system uses the MNIST dataset for training and initial evaluation.
-   Loading: Data is split into training and testing sets via `mnist.load_data()`.
-   Normalization: Pixel values are scaled to a range of  to improve model convergence.
-   Reshaping: Images are reshaped to (28, 28, 1) to match the input requirements of the CNN layers.
+- Dataset: MNIST.
+- Output classes: digits `0-9`.
+- Model file: `src/models/digit_cnn_model.h5`.
+- Command:
 
+```bash
+python -m src train --epochs 5
+```
 
+The canonical Python functions are `build_digit_model()` and `train_and_save_digit_model()`.
+`train_and_save_model()` remains as a backward-compatible alias for digit training.
 
-#### 2. Model Architecture (CNN)
-The model is built using a Sequential approach with the following layers:
-   Conv2D: Extracts image features (edges, curves, and shapes).
-   MaxPooling2D: Reduces image spatial dimensions to prevent overfitting.
-   Flatten: Converts 2D feature maps into a 1D vector.
-   Dense (Hidden): Learns complex patterns from the extracted features.
-   Dense (Output): Uses Softmax activation to provide probability scores for digits 0-9.
+## Letter CNN
 
+- Dataset: the A-Z directory splits under `data/letters`.
+- Output classes: 26 uppercase letters.
+- Model file: `src/models/letter_cnn_model.h5`.
+- Mapping file: `src/models/letter_class_mapping.json`.
+- Command:
 
+```bash
+python -m src train-letters --epochs 15
+```
 
-#### 3. Training Pipeline (`train_cnn.py`)
-The training process follows these steps:
-1.  Compilation: Uses the Adam optimizer and sparse_categorical_crossentropy loss function.
-2.  Fitting: The model trains for 5 epochs, repeatedly comparing predictions to correct labels.
-3.  Evaluation: Performance is measured against the test set, with an expected accuracy of 97–99%.
-4.  Saving: The final trained model is exported as `digit_cnn_model.h5` for integration into the main system.
+The canonical Python functions are `build_model()` and `train_and_save_letter_model()`.
+Letter training uses validation checkpoints, early stopping, learning-rate reduction, and augmentation.
 
+Running `python -m src.models.training` directly invokes the standalone letter-training CLI. For an unambiguous workflow, prefer the two `python -m src ...` commands above.
 
+## Other models
 
-#### 4. Model Testing (`test_model.py`)
-This script verifies the saved model's performance on unseen data:
-   Loads the `.h5` model file.
-   Preprocesses a test image from the MNIST test set.
-   Outputs the Predicted Digit vs. the Actual Digit to verify accuracy.
-
-
-
-#### 5. Purpose & Integration
-This ML component serves as the core recognition engine for the system:
-   OCR Engine: Classifies digits extracted during the Segmentation (Task 2) phase.
-   Evaluation: Provides the basis for the mandatory comparison of different ML techniques required for the project report.
-   GUI Integration: The saved model is called by the system's interface to provide real-time recognition of user-inputted numbers.
+Digit Logistic Regression and RBF SVM have separate modules and checkpoint files. The dual-CNN merge does not replace or retrain them.

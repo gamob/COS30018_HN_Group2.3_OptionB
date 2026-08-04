@@ -1,4 +1,4 @@
-#  Handwritten Number Recognition System (HNRS)
+# Handwritten Letter and Number Recognition System (HNRS)
 **Course:** COS30018 - Intelligent Systems [cite: 1]  
 **Due Date:** 11:59 pm 02/11/2025 (End of Week 12) [cite: 4]  
 **Team:** [Group of 3-4 Students] [cite: 6]
@@ -15,8 +15,8 @@ We use **NumPy arrays** as our universal language. The data must flow as follows
 | :--- | :--- | :--- | :--- | :--- |
 | **Start** | **GUI** | User Upload/Folder | `str` (File Path) | Member 4 |
 | **Task 1** | **Preprocessing** | `str` (File Path) | `np.array` (Cleaned Image) | Member 1 |
-| **Task 2** | **ML Recognition** | `np.array` (Cleaned Image) | `list[int]` (Predicted Numbers) | Member 3 |
-| **End** | **GUI** | `list[int]` | UI Display / Visuals | Member 4 |
+| **Task 2** | **ML Recognition** | `np.array` (Cleaned Image) | Predicted letters or `list[int]` | Member 3 |
+| **End** | **GUI** | Predicted text/digits | UI Display / Visuals | Member 4 |
 
 ---
 
@@ -27,13 +27,13 @@ We use **NumPy arrays** as our universal language. The data must flow as follows
 * **Mandatory Function:** `process_image(image_path: str) -> np.array`
 * **Constraint:** Output must be standardized (e.g., $28 \times 28$ pixels) to match ML model input. [cite: 21]
 ### 2. ML Model Representation & Training (`src/models/`)
-* **Goal:** Compare different techniques (e.g., CNNs vs. others) using the MNIST dataset. [cite: 28, 60]
+* **Goal:** Use separate CNNs for MNIST-style digits and A-Z letters while retaining the Logistic and RBF SVM digit baselines. [cite: 28, 60]
 * **Mandatory Function:** `predict_digits(digit_list: list[np.array]) -> list[int]`
 * **Constraint:** Accuracy and performance must be evaluated on both single and multi-digit images. [cite: 31]
 
 ### 3. System GUI (`src/gui/`)
 * **Goal:** Allow user input, show output, and enable parameter setting/visualization. [cite: 17, 18]
-* **Requirement:** Must support loading from a file or automatic creation from a folder. [cite: 20]
+* **Requirement:** Support file/folder input, letter or number CNN selection, and creation of a multi-digit image from ordered digit files. [cite: 20]
 
 ---
 

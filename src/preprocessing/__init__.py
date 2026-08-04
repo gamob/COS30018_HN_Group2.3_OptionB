@@ -1,6 +1,7 @@
 from .preprocessing import (
     load_image,
     to_grayscale,
+    normalize_polarity,
     binarize_threshold,
     binarize_otsu,
     binarize_adaptive,
@@ -14,6 +15,7 @@ from .preprocessing import (
 __all__ = [
     "load_image",
     "to_grayscale",
+    "normalize_polarity",
     "binarize_threshold",
     "binarize_otsu",
     "binarize_adaptive",

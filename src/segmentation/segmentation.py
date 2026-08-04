@@ -3,7 +3,17 @@ import numpy as np
 import os
 import glob
 import shutil
+from dataclasses import dataclass
 from typing import Tuple, List
+
+
+@dataclass(frozen=True)
+class LetterSegment:
+    image: np.ndarray
+    x: int
+    y: int
+    width: int
+    height: int
 
 def binarize_image(image: np.array) -> np.array:
     """
@@ -18,8 +28,12 @@ def binarize_image(image: np.array) -> np.array:
     blurred = cv2.GaussianBlur(image, (5, 5), 0)
     _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Invert so the digits are white on a black background
-    if np.mean(thresh) > 127:
+    # The border is normally the page/background. This is more reliable than
+    # the global mean for tightly cropped digits that fill most of the image.
+    light = thresh > 0
+    border = np.concatenate((light[0], light[-1], light[1:-1, 0], light[1:-1, -1]))
+    # Invert so foreground strokes are white on a black background.
+    if border.mean() >= 0.5:
         thresh = cv2.bitwise_not(thresh)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
@@ -104,6 +118,125 @@ def segment_digits(clean_image: np.array) -> list[np.array]:
     digit_regions.sort(key=lambda item: item[0])
     digit_images = [crop_to_content(region) for _, region in digit_regions]
     return digit_images
+
+
+def segment_letter_regions(clean_image: np.ndarray) -> list[LetterSegment]:
+    """Segment a single line/word into white-on-black character images.
+
+    Components are ordered from left to right. Small components such as the
+    dot of ``i`` or ``j`` are attached to the nearest vertically aligned main
+    component instead of being returned as separate characters.
+    """
+    binary = binarize_image(clean_image)
+    height, width = binary.shape
+    min_area = max(3, int(height * width * 0.0005))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+
+    components = []
+    for label in range(1, count):
+        x, y, w, h, area = (int(value) for value in stats[label])
+        if area >= min_area:
+            components.append({
+                "labels": [label], "x": x, "y": y, "w": w, "h": h, "area": area,
+                "has_detached_mark": False, "merged_stem": False,
+            })
+    if not components:
+        return []
+
+    typical_height = float(np.median([component["h"] for component in components]))
+    main_components = [component for component in components if component["h"] >= typical_height * 0.45]
+    small_components = [component for component in components if component not in main_components]
+    if not main_components:
+        main_components = components
+        small_components = []
+
+    for small in small_components:
+        small_center = small["x"] + small["w"] / 2.0
+
+        def attachment_score(main):
+            main_left, main_right = main["x"], main["x"] + main["w"]
+            horizontal_gap = max(main_left - small_center, small_center - main_right, 0.0)
+            return horizontal_gap / max(1.0, main["w"])
+
+        nearest = min(main_components, key=attachment_score)
+        if attachment_score(nearest) <= 0.75:
+            nearest_center_left = nearest["x"] - nearest["w"] * 0.25
+            nearest_center_right = nearest["x"] + nearest["w"] * 1.25
+            is_mark_above = (
+                small["y"] + small["h"] <= nearest["y"] + nearest["h"] * 0.40
+                and nearest_center_left <= small_center <= nearest_center_right
+            )
+            x0 = min(nearest["x"], small["x"])
+            y0 = min(nearest["y"], small["y"])
+            x1 = max(nearest["x"] + nearest["w"], small["x"] + small["w"])
+            y1 = max(nearest["y"] + nearest["h"], small["y"] + small["h"])
+            nearest["labels"].extend(small["labels"])
+            nearest["has_detached_mark"] = nearest["has_detached_mark"] or is_mark_above
+            nearest.update(x=x0, y=y0, w=x1 - x0, h=y1 - y0, area=nearest["area"] + small["area"])
+
+    # Join a detached, narrow ascender to the character immediately before it
+    # (for example, a handwritten ``d`` whose loop does not touch its stem).
+    # A component with an attached dot is kept separate so ``hi`` is not merged.
+    typical_width_before_merge = float(np.median([component["w"] for component in main_components]))
+    merged_components = []
+    for component in sorted(main_components, key=lambda item: item["x"]):
+        if merged_components:
+            previous = merged_components[-1]
+            gap = component["x"] - (previous["x"] + previous["w"])
+            is_nearby_stem = (
+                0 <= gap <= max(3.0, typical_width_before_merge * 0.12)
+                and component["w"] <= typical_width_before_merge * 0.35
+                and not component["has_detached_mark"]
+            )
+            if is_nearby_stem:
+                x0 = previous["x"]
+                y0 = min(previous["y"], component["y"])
+                x1 = max(previous["x"] + previous["w"], component["x"] + component["w"])
+                y1 = max(previous["y"] + previous["h"], component["y"] + component["h"])
+                previous["labels"].extend(component["labels"])
+                previous["merged_stem"] = True
+                previous.update(x=x0, y=y0, w=x1 - x0, h=y1 - y0, area=previous["area"] + component["area"])
+                continue
+        merged_components.append(component)
+    main_components = merged_components
+
+    typical_width = float(np.median([component["w"] for component in main_components]))
+    character_regions: list[LetterSegment] = []
+    for component in sorted(main_components, key=lambda item: item["x"]):
+        x, y, w, h = component["x"], component["y"], component["w"], component["h"]
+        component_mask = np.isin(labels[y:y + h, x:x + w], component["labels"])
+        region = component_mask.astype(np.uint8) * 255
+
+        is_unusually_wide = len(main_components) > 1 and w > typical_width * 1.55
+        if (w > h * 1.35 or is_unusually_wide) and not component["merged_stem"]:
+            splits = split_region_horizontally(region)
+            for offset, split in splits:
+                split = crop_to_content(split)
+                character_regions.append(
+                    LetterSegment(split, x + offset, y, split.shape[1], split.shape[0])
+                )
+        else:
+            region = crop_to_content(region)
+            character_regions.append(LetterSegment(region, x, y, region.shape[1], region.shape[0]))
+
+    character_regions = [segment for segment in character_regions if segment.image.size and np.any(segment.image)]
+    if not character_regions:
+        return []
+
+    line_baseline = float(np.median([segment.y + segment.height for segment in character_regions]))
+    line_height = float(np.median([segment.height for segment in character_regions]))
+    return [
+        segment for segment in character_regions
+        if not (
+            segment.height < line_height * 0.35
+            and segment.y + segment.height < line_baseline - line_height * 0.50
+        )
+    ]
+
+
+def segment_letters(clean_image: np.ndarray) -> list[np.ndarray]:
+    """Compatibility wrapper returning only character image arrays."""
+    return [segment.image for segment in segment_letter_regions(clean_image)]
 
 
 def segment_digits_projection(clean_image: np.array) -> list[np.array]:
