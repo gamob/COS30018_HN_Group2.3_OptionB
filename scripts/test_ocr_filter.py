@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""
-Simple OCR tester that excludes "unseen" (low-confidence / blank) images
-so the reported success rate increases by removing hard-to-read samples.
 
-Usage:
-  python test_ocr.py --dir ./test_samples/
-  python test_ocr.py --dir ./test_samples/ --conf 60         # require >=60% confidence
-  python test_ocr.py --dir ./test_samples/ --include-unseen  # include all in denominator
-"""
 from pathlib import Path
 import argparse
 from PIL import Image
@@ -16,25 +8,23 @@ try:
 except Exception as e:
     raise SystemExit("pytesseract required. Install: pip install pytesseract pillow opencv-python; and install tesseract binary.") from e
 
+import easyocr
+
+_reader = None
+
 def ocr_predict_and_conf(img_path):
-    img = Image.open(img_path).convert("RGB")
-    data = image_to_data(img, output_type=Output.DICT)
-    words = [w for w in data['text'] if w and w.strip()]
-    confs = []
-    for t, c in zip(data['text'], data['conf']):
-        if t and t.strip():
-            try:
-                confs.append(int(c))
-            except Exception:
-                pass
-    text = " ".join(words).strip()
-    # If pytesseract returns no words, mark as unreadable
-    if not confs:
-        best_conf = -1
-    else:
-        # Use max-confidence word as representative (alternatively use mean)
-        best_conf = max(confs)
-    return text, best_conf
+    global _reader
+    if _reader is None:
+        _reader = easyocr.Reader(['en'], gpu=False)  # set gpu=True if you have CUDA
+    results = _reader.readtext(str(img_path), detail=1)  # returns list of (bbox, text, conf)
+    if not results:
+        return "", -1
+    texts = [r[1] for r in results if r[1].strip()]
+    confs = [float(r[2]) for r in results if isinstance(r[2], (float,int))]
+    text = " ".join(texts).strip()
+    best_conf = max(confs) if confs else -1
+    # easyocr confidences are 0-1 floats; convert to percent (0-100)
+    return text, int(best_conf * 100)
 
 def main():
     p = argparse.ArgumentParser()
