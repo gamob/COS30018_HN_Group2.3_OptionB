@@ -3,7 +3,8 @@
 The Streamlit GUI in `src/gui/app.py` supports both recognition pipelines without sharing class mappings or replacing either CNN:
 
 - **Letter CNN model** loads `src/models/letter_cnn_model.h5`, segments characters, restores word gaps, and can apply conservative English spelling correction.
-- **Number CNN model** loads `src/models/digit_cnn_model.h5`, segments digits, predicts each digit, and joins the results from left to right.
+- **Number CNN model** loads the production checkpoint `src/models/digit_cnn_model.h5`, segments digits, predicts each digit, and joins the results from left to right.
+- **Alphanumeric CNN model** loads `src/models/alphanumeric_cnn_model.h5` and recognizes mixed `0-9`/`A-Z` strings with one 36-class CNN.
 - **Logistic model** and **RBF SVM model** remain available for digit recognition.
 - **Mock model** remains available as a UI fallback.
 
