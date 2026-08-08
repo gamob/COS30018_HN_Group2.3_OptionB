@@ -1,0 +1,16 @@
+$ python test_ocr.py --dir ./test_samples/
+
+Testing image_001.png ... Predicted: "Coffee Shop"    --> [CAN GUESS]
+Testing image_002.png ... Predicted: "12/08/2026"    --> [CAN GUESS]
+Testing image_003.png ... Predicted: "???"           --> [CANNOT GUESS]
+Testing image_004.png ... Predicted: "TOTAL $15.00"  --> [CAN GUESS]
+Testing image_005.png ... Predicted: ""              --> [CANNOT GUESS]
+Testing image_006.png ... Predicted: "Paid In Full"  --> [CAN GUESS]
+
+==================================================
+SUMMARY:
+  Total Tested         : 6
+  Passed (Can Guess)   : 4
+  Failed (Cannot Guess): 2
+  Success Rate         : 66.7%
+==================================================
