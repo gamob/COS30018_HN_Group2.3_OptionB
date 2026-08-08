@@ -50,7 +50,9 @@ The `segment_digits()` function identifies separate digit regions using:
 cv2.connectedComponentsWithStats()
 ```
 
-Each connected white region is treated as a candidate digit.
+Large connected regions are treated as digit bodies. Detached secondary
+strokes, such as the base of a handwritten `1`, are attached to the nearest
+horizontally overlapping body.
 
 ### Filtering
 
@@ -63,7 +65,8 @@ Small noisy regions are removed using:
 
 ## 3. Wide Region Splitting
 
-If a detected region is unusually wide, it may contain multiple touching digits.
+Digit segmentation does not split a region solely because its pixel width is
+large. This keeps results independent of the input image resolution.
 
 The `split_region_horizontally()` function:
 - computes vertical projection

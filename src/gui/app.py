@@ -34,7 +34,14 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT_DIR))
 
 from src.preprocessing.preprocessing import center_and_resize, normalize_array, preprocess_image_steps, preprocess_image
-from src.models.model import load_digit_cnn_model, load_letter_cnn_model, predict_digit, predict_letter
+from src.models.model import (
+    ALPHANUMERIC_CLASS_NAMES,
+    load_alphanumeric_cnn_model,
+    load_digit_cnn_model,
+    load_letter_cnn_model,
+    predict_digit,
+    predict_letter,
+)
 from src.models.logistic_model import load_logistic_model as load_digit_logistic_model
 from src.models.logistic_model import predict_digit as predict_logistic_digit
 from src.models.svm_model import load_svm_model as load_digit_svm_model
@@ -43,10 +50,11 @@ from src.segmentation.segmentation import segment_digits, segment_letter_regions
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 LETTER_CNN_OPTION = "Letter CNN model"
 NUMBER_CNN_OPTION = "Number CNN model"
+ALPHANUMERIC_CNN_OPTION = "Alphanumeric CNN model"
 LOGISTIC_OPTION = "Logistic model"
 SVM_OPTION = "RBF SVM model"
 MOCK_OPTION = "Mock model"
-MODEL_OPTIONS = [LETTER_CNN_OPTION, NUMBER_CNN_OPTION, LOGISTIC_OPTION, SVM_OPTION, MOCK_OPTION]
+MODEL_OPTIONS = [LETTER_CNN_OPTION, NUMBER_CNN_OPTION, ALPHANUMERIC_CNN_OPTION, LOGISTIC_OPTION, SVM_OPTION, MOCK_OPTION]
 DIGIT_MODEL_OPTIONS = {NUMBER_CNN_OPTION, LOGISTIC_OPTION, SVM_OPTION, MOCK_OPTION}
 
 try:
@@ -150,6 +158,15 @@ def load_digit_trained_model() -> Optional[Tuple[object, Path]]:
     if not model_path.exists():
         return None
     model = load_digit_cnn_model(model_path)
+    return model, model_path
+
+
+@st.cache_resource
+def load_alphanumeric_trained_model() -> Optional[Tuple[object, Path]]:
+    model_path = ROOT_DIR / "src" / "models" / "alphanumeric_cnn_model.h5"
+    if not model_path.exists():
+        return None
+    model = load_alphanumeric_cnn_model(model_path)
     return model, model_path
 
 
@@ -261,6 +278,20 @@ def predict_with_model(processed_array: np.ndarray, model_option: str) -> Tuple[
         prediction = predict_letter(model, image)
         confidence = None
         return prediction, confidence
+
+    if model_option == ALPHANUMERIC_CNN_OPTION:
+        model_data = load_alphanumeric_trained_model()
+        if model_data is None:
+            raise RuntimeError("No trained alphanumeric CNN model checkpoint was found.")
+        model, _ = model_data
+        image = processed_array.astype(np.float32)
+        if image.ndim == 2:
+            image = image[..., np.newaxis]
+        if image.max() > 1.0:
+            image = image / 255.0
+        outputs = model.predict(np.expand_dims(image, axis=0), verbose=0)
+        class_index = int(np.argmax(outputs[0]))
+        return ALPHANUMERIC_CLASS_NAMES[class_index], float(np.max(outputs[0]))
 
     if model_option == NUMBER_CNN_OPTION:
         model_data = load_digit_trained_model()
@@ -400,6 +431,36 @@ def get_segmented_letter_predictions(
             typical_height,
         )
         thumbnail = center_and_resize(letter.astype(np.uint8), size=(96, 96), margin=10)
+        results.append((Image.fromarray(thumbnail), str(prediction), segment.x, segment.width))
+    return results
+
+
+def get_segmented_alphanumeric_predictions(
+    clean_image: np.ndarray,
+    preprocess_method: str,
+    thresh: int,
+    blur_ksize: int,
+    adaptive_block: int,
+    adaptive_c: int,
+) -> list[tuple[Image.Image, str, int, int]]:
+    """Segment and classify a mixed uppercase-letter/digit line."""
+    results = []
+    for segment in segment_letter_regions(clean_image):
+        padding = max(2, int(round(max(segment.image.shape) * 0.15)))
+        padded = np.pad(segment.image, padding, mode="constant", constant_values=0)
+        processed = preprocess_image(
+            padded,
+            size=(28, 28),
+            method=preprocess_method,
+            blur_ksize=blur_ksize,
+            adaptive_params=(adaptive_block, adaptive_c),
+            thresh=thresh,
+            invert=False,
+            normalize=True,
+            margin=4,
+        )
+        prediction, _ = predict_with_model(processed, ALPHANUMERIC_CNN_OPTION)
+        thumbnail = center_and_resize(segment.image.astype(np.uint8), size=(96, 96), margin=10)
         results.append((Image.fromarray(thumbnail), str(prediction), segment.x, segment.width))
     return results
 
@@ -681,6 +742,13 @@ def main() -> None:
                 model_option = MOCK_OPTION
             else:
                 st.success(f"Loaded number CNN model from {model_data[1]}")
+        elif model_option == ALPHANUMERIC_CNN_OPTION:
+            model_data = load_alphanumeric_trained_model()
+            if model_data is None:
+                st.warning("No trained alphanumeric CNN model found. Train and promote a candidate model first.")
+                model_option = MOCK_OPTION
+            else:
+                st.success(f"Loaded alphanumeric CNN model from {model_data[1]}")
         elif model_option == LOGISTIC_OPTION:
             model_data = load_logistic_model()
             if model_data is None:
@@ -742,19 +810,33 @@ def main() -> None:
             st.info("This is a mock result. Add a trained model checkpoint to use real predictions.")
     else:
         try:
-            if model_option == LETTER_CNN_OPTION:
-                letter_results = get_segmented_letter_predictions(
-                    steps["cleaned"],
-                    preprocess_method,
-                    thresh,
-                    blur_ksize,
-                    adaptive_block,
-                    adaptive_c,
-                )
+            if model_option in (LETTER_CNN_OPTION, ALPHANUMERIC_CNN_OPTION):
+                if model_option == LETTER_CNN_OPTION:
+                    letter_results = get_segmented_letter_predictions(
+                        steps["cleaned"],
+                        preprocess_method,
+                        thresh,
+                        blur_ksize,
+                        adaptive_block,
+                        adaptive_c,
+                    )
+                else:
+                    letter_results = get_segmented_alphanumeric_predictions(
+                        steps["cleaned"],
+                        preprocess_method,
+                        thresh,
+                        blur_ksize,
+                        adaptive_block,
+                        adaptive_c,
+                    )
                 if not letter_results:
-                    raise RuntimeError("No letters were detected in the image.")
+                    raise RuntimeError("No characters were detected in the image.")
                 raw_prediction = join_letter_predictions(letter_results, word_gap_ratio)
-                prediction = correct_english_text(raw_prediction) if dictionary_correction else raw_prediction
+                prediction = (
+                    correct_english_text(raw_prediction)
+                    if model_option == LETTER_CNN_OPTION and dictionary_correction
+                    else raw_prediction
+                )
                 confidence = None
                 with result_panel:
                     st.code(prediction, language=None, wrap_lines=True)
@@ -790,8 +872,8 @@ def main() -> None:
                 st.error(f"Prediction failed: {error}")
                 st.info("The app can still show the image and preprocessing preview even without a model checkpoint.")
 
-    if model_option == LETTER_CNN_OPTION and letter_results:
-        with st.expander("Segmented letter thumbnails", expanded=True):
+    if model_option in (LETTER_CNN_OPTION, ALPHANUMERIC_CNN_OPTION) and letter_results:
+        with st.expander("Segmented character thumbnails", expanded=True):
             render_thumbnail_cards(
                 [(thumbnail, letter) for thumbnail, letter, _, _ in letter_results],
                 "Character",

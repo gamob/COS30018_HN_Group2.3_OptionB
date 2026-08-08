@@ -94,30 +94,92 @@ def split_region_horizontally(region: np.array):
 
 
 def segment_digits(clean_image: np.array) -> list[np.array]:
-    """
-    Technique 1: Connected Components with Smart Horizontal Splitting.
-    Finds isolated white blobs, and splits them if they are too wide.
+    """Segment a line of digits while preserving detached strokes.
+
+    Large components are treated as digit bodies.  Short secondary components
+    (for example the base of a handwritten ``1``) are attached to the nearest
+    horizontally overlapping body.  Width is deliberately not used as an
+    unconditional split trigger because input resolution must not change the
+    number of detected digits.
     """
     thresh = binarize_image(clean_image)
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thresh, connectivity=8)
 
-    digit_regions = []
+    image_height, image_width = thresh.shape
+    min_area = max(8, int(image_height * image_width * 0.00002))
+    components = []
     for label in range(1, num_labels):
         x, y, w, h, area = stats[label]
-        if area < 50 or w < 5 or h < 5:
+        if area < min_area or w < 2 or h < 2:
+            continue
+        components.append({
+            "label": label,
+            "x": int(x),
+            "y": int(y),
+            "w": int(w),
+            "h": int(h),
+            "area": int(area),
+        })
+
+    if not components:
+        return []
+
+    typical_height = float(np.median([component["h"] for component in components]))
+    typical_area = float(np.median([component["area"] for component in components]))
+    bodies = [
+        component for component in components
+        if component["h"] >= typical_height * 0.45
+        and component["area"] >= typical_area * 0.15
+    ]
+    if not bodies:
+        bodies = components.copy()
+
+    body_labels = {component["label"] for component in bodies}
+    groups = [{"body": body, "labels": [body["label"]]} for body in bodies]
+
+    for component in components:
+        if component["label"] in body_labels:
             continue
 
-        region = thresh[y:y+h, x:x+w]
-        if w > h * 1.8 or w > 100:
-            splits = split_region_horizontally(region)
-            for offset, subregion in splits:
-                digit_regions.append((x + offset, subregion))
-        else:
-            digit_regions.append((x, region))
+        component_left = component["x"]
+        component_right = component["x"] + component["w"]
+
+        def attachment_score(group):
+            body = group["body"]
+            body_left = body["x"]
+            body_right = body["x"] + body["w"]
+            overlap = max(0, min(component_right, body_right) - max(component_left, body_left))
+            horizontal_gap = max(body_left - component_right, component_left - body_right, 0)
+            component_center = component_left + component["w"] / 2.0
+            body_center = body_left + body["w"] / 2.0
+            # Strongly prefer horizontal overlap, then the closest body.
+            return (overlap <= 0, horizontal_gap, abs(component_center - body_center))
+
+        nearest = min(groups, key=attachment_score)
+        body = nearest["body"]
+        body_left = body["x"]
+        body_right = body["x"] + body["w"]
+        overlap = max(0, min(component_right, body_right) - max(component_left, body_left))
+        gap = max(body_left - component_right, component_left - body_right, 0)
+        max_gap = max(3, int(round(typical_height * 0.08)))
+        if overlap > 0 or gap <= max_gap:
+            nearest["labels"].append(component["label"])
+
+    digit_regions = []
+    for group in groups:
+        group_labels = group["labels"]
+        selected = [component for component in components if component["label"] in group_labels]
+        x0 = min(component["x"] for component in selected)
+        y0 = min(component["y"] for component in selected)
+        x1 = max(component["x"] + component["w"] for component in selected)
+        y1 = max(component["y"] + component["h"] for component in selected)
+        mask = np.isin(labels[y0:y1, x0:x1], group_labels).astype(np.uint8) * 255
+        region = crop_to_content(mask)
+        if region.size and np.any(region):
+            digit_regions.append((x0, region))
 
     digit_regions.sort(key=lambda item: item[0])
-    digit_images = [crop_to_content(region) for _, region in digit_regions]
-    return digit_images
+    return [region for _, region in digit_regions]
 
 
 def segment_letter_regions(clean_image: np.ndarray) -> list[LetterSegment]:

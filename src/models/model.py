@@ -22,6 +22,9 @@ DIGIT_MODEL_FILENAME = "digit_cnn_model.h5"
 # Backward-compatible name used by the original digit-only code and notebook.
 MODEL_FILENAME = DIGIT_MODEL_FILENAME
 LETTER_MAPPING_FILENAME = "letter_class_mapping.json"
+ALPHANUMERIC_MODEL_FILENAME = "alphanumeric_cnn_model.h5"
+ALPHANUMERIC_MAPPING_FILENAME = "alphanumeric_class_mapping.json"
+ALPHANUMERIC_CLASS_NAMES = [str(digit) for digit in range(10)] + [chr(ord("A") + index) for index in range(26)]
 LETTER_CLASS_NAMES = [chr(ord("A") + i) for i in range(26)]
 _letter_mapping_cache: Optional[list[str]] = None
 
@@ -32,6 +35,10 @@ def get_default_letter_model_path() -> Path:
 
 def get_default_digit_model_path() -> Path:
     return Path(__file__).resolve().parent / DIGIT_MODEL_FILENAME
+
+
+def get_default_alphanumeric_model_path() -> Path:
+    return Path(__file__).resolve().parent / ALPHANUMERIC_MODEL_FILENAME
 
 
 def get_default_model_path() -> Path:
@@ -88,6 +95,13 @@ def load_digit_cnn_model(model_path: Optional[str] = None):
     return load_model(path)
 
 
+def load_alphanumeric_cnn_model(model_path: Optional[str] = None):
+    path = Path(model_path) if model_path else get_default_alphanumeric_model_path()
+    if not path.exists():
+        raise FileNotFoundError(f"Model file not found: {path}")
+    return load_model(path)
+
+
 def predict_letter(model, image_array: np.ndarray, class_mapping=None) -> str:
     if image_array.ndim == 2:
         image_array = image_array[..., np.newaxis]
@@ -119,3 +133,15 @@ def predict_digit(model, image_array: np.ndarray) -> int:
 
     outputs = model.predict(np.expand_dims(image, axis=0), verbose=0)
     return int(np.argmax(outputs, axis=1)[0])
+
+
+def predict_alphanumeric(model, image_array: np.ndarray) -> str:
+    if image_array.ndim == 2:
+        image_array = image_array[..., np.newaxis]
+    if image_array.ndim == 3 and image_array.shape[-1] != 1:
+        image_array = image_array.mean(axis=-1, keepdims=True)
+    image = image_array.astype(np.float32)
+    if image.max() > 1.0:
+        image = image / 255.0
+    outputs = model.predict(np.expand_dims(image, axis=0), verbose=0)
+    return ALPHANUMERIC_CLASS_NAMES[int(np.argmax(outputs, axis=1)[0])]
