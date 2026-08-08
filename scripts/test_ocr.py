@@ -1,30 +1,21 @@
 #!/usr/bin/env python3
-"""
-test_ocr.py
+"""Evaluate test images and write results in the sample OCR text format.
 
 Usage:
-  python test_ocr.py --dir <images_dir> [--models-dir <models_dir>] [--model-file <model_path>] [--output desired_output.txt] [--no-tesseract]
+  python scripts/test_ocr.py --dir <images_dir>
+  python scripts/test_ocr.py --dir <images_dir> --models-dir src/models
+  python scripts/test_ocr.py --dir <images_dir> --output desired_output.txt
 
-This script will:
- - Try to load a model from --model-file or the first file discovered in --models-dir.
- - If a model cannot be used, fall back to pytesseract.
- - Run OCR on every image file in the given directory and produce an output file matching the sample format.
-
-Notes:
- - You may need to install dependencies:
-     pip install pillow pytesseract numpy opencv-python joblib
-   And optionally:
-     pip install torch        # if using PyTorch models
-     pip install tensorflow   # if using Keras .h5 models
- - If you rely on Tesseract, ensure the tesseract binary is installed and on PATH.
+The script prefers a supplied model file, otherwise it discovers the first
+supported model in --models-dir. If no project model can produce a text result,
+it falls back to pytesseract so the output still matches the requested format.
 """
 
-import os
-import sys
 import argparse
 import glob
 import pathlib
-import math
+import os
+import sys
 
 from PIL import Image
 import numpy as np
@@ -51,11 +42,28 @@ try:
 except Exception:
     tf = None
 
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.models.model import load_alphanumeric_cnn_model, predict_alphanumeric
+from src.preprocessing.preprocessing import preprocess_image
+from src.segmentation.segmentation import segment_letter_regions
+
+DEFAULT_IMAGES_DIR = PROJECT_ROOT / "data" / "unseen_data" / "Case#1"
+DEFAULT_TEST_IMAGES_DIR = DEFAULT_IMAGES_DIR / "Test"
+DEFAULT_MODELS_DIR = PROJECT_ROOT / "src" / "models"
+DEFAULT_MODEL_FILE = DEFAULT_MODELS_DIR / "alphanumeric_cnn_model.h5"
+DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "desired_output.txt"
+
+
 def find_model_file(models_dir):
     if not models_dir or not os.path.isdir(models_dir):
         return None
-    # pick the first plausible model file
-    exts = ("*.pt", "*.pth", "*.h5", "*.keras", "*.pkl", "*.joblib", "*.sav", "*.onnx")
+    preferred = pathlib.Path(models_dir) / "alphanumeric_cnn_model.h5"
+    if preferred.exists():
+        return str(preferred)
+    exts = ("*.h5", "*.keras", "*.pkl", "*.joblib", "*.sav", "*.pt", "*.pth", "*.onnx")
     for e in exts:
         files = sorted(glob.glob(os.path.join(models_dir, e)))
         if files:
@@ -66,6 +74,7 @@ def load_model(model_path):
     if not model_path:
         return None, None
     ext = pathlib.Path(model_path).suffix.lower()
+    filename = pathlib.Path(model_path).name.lower()
     try:
         if ext in (".pt", ".pth") and torch:
             model = torch.load(model_path, map_location="cpu")
@@ -77,6 +86,9 @@ def load_model(model_path):
                 model.eval()
             return model, "pytorch"
         if ext in (".h5", ".keras") and tf:
+            if filename == "alphanumeric_cnn_model.h5":
+                model = load_alphanumeric_cnn_model(model_path)
+                return model, "alphanumeric_cnn"
             model = tf.keras.models.load_model(model_path)
             return model, "keras"
         if ext in (".pkl", ".joblib", ".sav") and joblib:
@@ -101,11 +113,54 @@ def preprocess_for_pytorch(image, size=(224,224)):
     ])
     return transform(image).unsqueeze(0)  # batch dim
 
-def predict_with_model(model_tuple, pil_img):
+def predict_alphanumeric_text(model, pil_img):
+    gray = np.array(pil_img.convert("L"), dtype=np.uint8)
+    segments = segment_letter_regions(gray)
+    if not segments:
+        processed = preprocess_image(
+            gray,
+            size=(28, 28),
+            method="otsu",
+            blur_ksize=5,
+            adaptive_params=(15, 7),
+            thresh=128,
+            invert=False,
+            normalize=True,
+            margin=4,
+        )
+        return predict_alphanumeric(model, processed)
+
+    predictions = []
+    for segment in segments:
+        padding = max(2, int(round(max(segment.image.shape) * 0.15)))
+        padded = np.pad(segment.image, padding, mode="constant", constant_values=0)
+        processed = preprocess_image(
+            padded,
+            size=(28, 28),
+            method="otsu",
+            blur_ksize=5,
+            adaptive_params=(15, 7),
+            thresh=128,
+            invert=False,
+            normalize=True,
+            margin=4,
+        )
+        predictions.append(predict_alphanumeric(model, processed))
+
+    return "".join(predictions)
+
+
+def predict_with_model(model_tuple, pil_img, image_name=""):
     model, mtype = model_tuple
     if model is None:
         return None
     try:
+        if mtype == "alphanumeric_cnn":
+            try:
+                return predict_alphanumeric_text(model, pil_img)
+            except Exception as error:
+                print(f"Warning: alphanumeric prediction failed for {image_name}: {error}", file=sys.stderr)
+                return None
         if mtype == "pytorch" and torch:
             try:
                 x = preprocess_for_pytorch(pil_img)
@@ -132,22 +187,25 @@ def predict_with_model(model_tuple, pil_img):
                         return str(pred_idx)
                     return str(out.tolist())
                 return str(out)
-            except Exception:
+            except Exception as error:
+                print(f"Warning: keras prediction failed for {image_name}: {error}", file=sys.stderr)
                 return None
         if mtype in ("sklearn", "sklearn-like"):
             try:
-                arr = np.array(pil_img.convert("L").resize((128, 128))).astype("float32").flatten()[None, :]
+                arr = np.array(pil_img.convert("L").resize((28, 28))).astype("float32").flatten()[None, :]
                 if hasattr(model, "predict"):
                     out = model.predict(arr)
                     if isinstance(out, (list, tuple, np.ndarray)):
                         return str(out[0])
                     return str(out)
-            except Exception:
+            except Exception as error:
+                print(f"Warning: sklearn prediction failed for {image_name}: {error}", file=sys.stderr)
                 return None
         if mtype == "pytorch_state_dict":
             # can't use without model architecture
             return None
-    except Exception:
+    except Exception as error:
+        print(f"Warning: prediction failed for {image_name}: {error}", file=sys.stderr)
         return None
     return None
 
@@ -168,30 +226,45 @@ def is_cannot_guess(pred):
         return True
     return False
 
+
+def normalize_label(value: str) -> str:
+    return str(value).strip().lower()
+
+
+def get_expected_label(image_path: pathlib.Path, root: pathlib.Path) -> str:
+    relative = image_path.relative_to(root)
+    if len(relative.parts) < 2:
+        return ""
+    return normalize_label(relative.parts[-2])
+
 def list_image_files(dirpath):
     exts = ("*.png", "*.jpg", "*.jpeg", "*.tiff", "*.bmp", "*.gif")
+    root = pathlib.Path(dirpath)
     files = []
-    for e in exts:
-        files.extend(glob.glob(os.path.join(dirpath, e)))
-    files = sorted(files, key=lambda p: os.path.basename(p).lower())
+    for ext in exts:
+        files.extend(root.rglob(ext))
+    files = sorted(files, key=lambda p: str(p.relative_to(root)).lower())
     return files
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate OCR model(s) on a directory of test images.")
-    parser.add_argument("--dir", required=True, help="Directory containing test images (e.g., ./test_samples/)")
-    parser.add_argument("--models-dir", default=None, help="Directory containing model files")
-    parser.add_argument("--model-file", default=None, help="Specific model file to load (overrides models-dir)")
-    parser.add_argument("--output", default="desired_output.txt", help="Output text file (default desired_output.txt)")
+    parser.add_argument("--dir", default=str(DEFAULT_IMAGES_DIR), help="Directory containing test images")
+    parser.add_argument("--test", action="store_true", help="Force evaluation on Case#1\\Test only")
+    parser.add_argument("--models-dir", default=str(DEFAULT_MODELS_DIR), help="Directory containing model files")
+    parser.add_argument("--model-file", default=str(DEFAULT_MODEL_FILE), help="Specific model file to load (overrides models-dir)")
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Output text file")
     parser.add_argument("--no-tesseract", action="store_true", help="Disable fallback to pytesseract")
     args = parser.parse_args()
 
-    images_dir = args.dir
-    if not os.path.isdir(images_dir):
+    images_dir = DEFAULT_TEST_IMAGES_DIR if args.test else pathlib.Path(args.dir)
+    if not images_dir.is_dir():
         print(f"Error: images directory not found: {images_dir}", file=sys.stderr)
         sys.exit(2)
 
     model_file = args.model_file
-    if not model_file and args.models_dir:
+    if model_file and not os.path.isfile(model_file) and args.models_dir:
+        model_file = find_model_file(args.models_dir)
+    elif not model_file and args.models_dir:
         model_file = find_model_file(args.models_dir)
 
     model, mtype = load_model(model_file) if model_file else (None, None)
@@ -214,18 +287,19 @@ def main():
 
     for img_path in image_files:
         total += 1
-        filename = os.path.basename(img_path)
+        relative_name = str(img_path.relative_to(images_dir))
+        expected_label = get_expected_label(img_path, images_dir)
         try:
             pil_img = Image.open(img_path)
         except Exception as e:
+            print(f"Warning: failed to open {relative_name}: {e}", file=sys.stderr)
             pred = ""
-            note = f"ERROR opening image: {e}"
             cannot = True
         else:
             pred = None
             # 1) Try model if available
             if model is not None:
-                p = predict_with_model(model_tuple, pil_img)
+                p = predict_with_model(model_tuple, pil_img, relative_name)
                 if p is not None:
                     pred = p
             # 2) Fall back to tesseract if enabled
@@ -237,16 +311,21 @@ def main():
                 pred = ""
             cannot = is_cannot_guess(pred)
 
-        status = "CANNOT GUESS" if cannot else "CAN GUESS"
+        predicted_label = normalize_label(pred)
         if cannot:
+            status = "CANNOT GUESS"
             failed += 1
-        else:
+        elif expected_label and predicted_label == expected_label:
+            status = "CORRECT"
             passed += 1
+        else:
+            status = "WRONG"
+            failed += 1
 
-        # Format: Testing image_001.png ... Predicted: "Coffee Shop"    --> [CAN GUESS]
+        # Format: Testing image_001.png ... Predicted: "Coffee Shop"    --> [CORRECT]
         display_pred = str(pred).replace('\n', ' ').strip()
         # keep empty string shown as "" in output
-        line = f'Testing {filename} ... Predicted: "{display_pred}"    --> [{status}]'
+        line = f'Testing {relative_name} ... Predicted: "{display_pred}"    --> [{status}]'
         print(line)
         lines.append(line)
 
@@ -257,8 +336,8 @@ def main():
     summary.append("="*50)
     summary.append("SUMMARY:")
     summary.append(f"  Total Tested         : {total}")
-    summary.append(f"  Passed (Can Guess)   : {passed}")
-    summary.append(f"  Failed (Cannot Guess): {failed}")
+    summary.append(f"  Passed (Correct)     : {passed}")
+    summary.append(f"  Failed (Wrong/Guess) : {failed}")
     # format with one decimal if needed, match sample like 66.7%
     summary.append(f"  Success Rate         : {success_rate:.1f}%")
     summary.append("="*50)
