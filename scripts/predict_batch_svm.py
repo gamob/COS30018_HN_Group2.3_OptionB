@@ -3,6 +3,10 @@
 Outputs CSV: filename,predicted
 """
 from pathlib import Path
+import sys
+# Ensure project root is on sys.path so `src` package can be imported when running script directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import csv
 
