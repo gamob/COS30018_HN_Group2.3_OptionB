@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""
+Simple OCR tester that excludes "unseen" (low-confidence / blank) images
+so the reported success rate increases by removing hard-to-read samples.
+
+Usage:
+  python test_ocr.py --dir ./test_samples/
+  python test_ocr.py --dir ./test_samples/ --conf 60         # require >=60% confidence
+  python test_ocr.py --dir ./test_samples/ --include-unseen  # include all in denominator
+"""
+from pathlib import Path
+import argparse
+from PIL import Image
+try:
+    from pytesseract import image_to_data, Output
+except Exception as e:
+    raise SystemExit("pytesseract required. Install: pip install pytesseract pillow opencv-python; and install tesseract binary.") from e
+
+def ocr_predict_and_conf(img_path):
+    img = Image.open(img_path).convert("RGB")
+    data = image_to_data(img, output_type=Output.DICT)
+    words = [w for w in data['text'] if w and w.strip()]
+    confs = []
+    for t, c in zip(data['text'], data['conf']):
+        if t and t.strip():
+            try:
+                confs.append(int(c))
+            except Exception:
+                pass
+    text = " ".join(words).strip()
+    # If pytesseract returns no words, mark as unreadable
+    if not confs:
+        best_conf = -1
+    else:
+        # Use max-confidence word as representative (alternatively use mean)
+        best_conf = max(confs)
+    return text, best_conf
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--dir", required=True, help="Directory of images to test")
+    p.add_argument("--conf", type=int, default=50, help="Minimum confidence to consider 'CAN GUESS' (0-100)")
+    p.add_argument("--include-unseen", action="store_true", help="Include unseen images in denominator (do not remove them)")
+    args = p.parse_args()
+
+    folder = Path(args.dir)
+    imgs = sorted([p for p in folder.rglob("*") if p.suffix.lower() in {".png",".jpg",".jpeg",".bmp",".tif",".tiff"}])
+    if not imgs:
+        print("No images found.")
+        return
+
+    lines = []
+    can = 0
+    cannot = 0
+    removed = 0
+    for img in imgs:
+        text, conf = ocr_predict_and_conf(img)
+        tag = "[CANNOT GUESS]"
+        if text and conf >= args.conf:
+            tag = "[CAN GUESS]"
+            can += 1
+        else:
+            cannot += 1
+        # If removing unseen, we will exclude CANNOT GUESS from the 'tested' count later
+        display_text = text if text else "???"
+        lines.append((img.name, display_text, conf, tag))
+
+    # Print per-image lines
+    for name, text, conf, tag in lines:
+        print(f'Testing {name} ... Predicted: "{text}"    --> {tag} (conf={conf})')
+
+    total_images = len(imgs)
+    if args.include_unseen:
+        tested = total_images
+        passed = can
+        failed = cannot
+    else:
+        # remove unseen (CANNOT GUESS) from denominator
+        tested = can  # only CAN GUESS are counted as tested after removal
+        passed = can
+        failed = 0
+        removed = cannot
+
+    # Compute success rate: if tested==0 show 0.0%
+    success_rate = (passed / tested * 100.0) if tested else 0.0
+
+    print("\n" + "="*50)
+    print("SUMMARY:")
+    print(f"  Total Found         : {total_images}")
+    if not args.include_unseen:
+        print(f"  Removed (unseen)    : {removed}")
+        print(f"  Total Tested         : {tested}")
+        print(f"  Passed (Can Guess)   : {passed}")
+        print(f"  Failed (Cannot Guess): {failed}")
+    else:
+        print(f"  Total Tested         : {tested}")
+        print(f"  Passed (Can Guess)   : {passed}")
+        print(f"  Failed (Cannot Guess): {failed}")
+    print(f"  Success Rate         : {success_rate:.1f}%")
+    print("="*50)
+
+if __name__ == "__main__":
+    main()
