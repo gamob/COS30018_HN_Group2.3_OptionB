@@ -48,6 +48,20 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
+## 4. Create the Python virtual environment
+
+From the project root, run:
+
+```cmd
+setup_venv.bat
+```
+
+Then activate it in PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
 Verify configuration:
 
 ```bash

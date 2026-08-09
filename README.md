@@ -30,9 +30,13 @@ It includes image preprocessing, segmentation, model training and evaluation, a 
 
 ## How to use the project
 
-1. Install dependencies:
+1. Create a virtual environment and install dependencies:
    ```bash
-   pip install -r requirements.txt
+   setup_venv.bat
+   ```
+   Then activate it in PowerShell:
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
    ```
 
 2. Evaluate the OCR model on a folder:
