@@ -1,0 +1,24 @@
+{
+  "source_dir": "C:\\Users\\DUNG PHAM\\Desktop\\CS\\Semester 6\\COS30018\\cos30018_group\\data\\alphanumeric_emnist\\test",
+  "source_split": "test",
+  "seed": 45,
+  "count_per_category": 2000,
+  "total_images": 6000,
+  "min_length": 3,
+  "max_length": 8,
+  "characters": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  "categories": [
+    "letters",
+    "numbers",
+    "mixed"
+  ],
+  "transform": {
+    "target_height_min": 36,
+    "target_height_max": 36,
+    "rotation_degrees": 0.0,
+    "baseline_jitter": 0,
+    "spacing_min": 10,
+    "spacing_max": 10,
+    "canvas_padding": 10
+  }
+}

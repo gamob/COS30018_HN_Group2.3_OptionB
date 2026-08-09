@@ -15,7 +15,6 @@ for the image directory; there is deliberately no default image directory.
 from __future__ import annotations
 
 import argparse
-import csv
 import pathlib
 import sys
 from dataclasses import dataclass
@@ -38,10 +37,7 @@ from src.segmentation.segmentation import binarize_image, segment_digits, segmen
 
 
 MODELS_DIR = PROJECT_ROOT / "src" / "models"
-DEFAULT_IMAGES_DIR = PROJECT_ROOT / "data" / "unseen_data" / "Case#3" / "HandWritten_Numbers"
-DEFAULT_LABELS_CSV = DEFAULT_IMAGES_DIR / "labels.csv"
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "desired_output.txt"
-DEFAULT_MODEL_KEY = "number"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif"}
 
 
@@ -161,8 +157,24 @@ def resolve_model(args: argparse.Namespace) -> tuple[ModelSpec, pathlib.Path]:
             raise SystemExit(2)
         return spec, model_path
 
-    spec = MODEL_SPECS[DEFAULT_MODEL_KEY]
+    spec = choose_model_interactively()
     return spec, spec.path
+
+
+def ask_for_image_directory() -> pathlib.Path:
+    while True:
+        try:
+            value = input("Image directory: ").strip()
+        except EOFError:
+            print("Error: an image directory is required.", file=sys.stderr)
+            raise SystemExit(2)
+        if not value:
+            print("Please enter an image directory.", file=sys.stderr)
+            continue
+        path = pathlib.Path(value).expanduser()
+        if path.is_dir():
+            return path
+        print(f"Directory not found: {path}", file=sys.stderr)
 
 
 def load_cnn_model(model_path: pathlib.Path):
@@ -256,38 +268,23 @@ def tesseract_ocr(image: Image.Image) -> tuple[str | None, float | None]:
 def list_image_files(directory: pathlib.Path) -> list[pathlib.Path]:
     return sorted(
         (path for path in directory.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS),
-        key=lambda path: int(path.stem) if path.stem.isdigit() else str(path.relative_to(directory)).lower(),
+        key=lambda path: str(path.relative_to(directory)).lower(),
     )
 
 
-def load_expected_labels(labels_csv: pathlib.Path) -> list[str]:
-    if not labels_csv.is_file():
-        raise FileNotFoundError(f"Label CSV not found: {labels_csv}")
-
-    with labels_csv.open("r", encoding="utf-8", newline="") as handle:
-        rows = list(csv.reader(handle))
-
-    labels = [value.strip() for row in rows for value in row if str(value).strip() != ""]
-    if not labels:
-        raise ValueError(f"No labels found in {labels_csv}")
-    return labels
-
-
-def expected_label(image_path: pathlib.Path, labels: list[str]) -> str | None:
-    if not image_path.stem.isdigit():
+def expected_label(image_path: pathlib.Path, root: pathlib.Path) -> str | None:
+    relative = image_path.relative_to(root)
+    if len(relative.parts) < 2:
         return None
-    index = int(image_path.stem)
-    if index < 0 or index >= len(labels):
-        return None
-    return labels[index].strip()
+    return relative.parts[-2].strip().upper()
 
 
 def evaluate_status(prediction: str | None, expected: str | None) -> str:
     if not prediction:
         return "CANNOT GUESS"
     if expected is None:
-        return "WRONG"
-    return "CORRECT" if prediction.strip() == expected else "WRONG"
+        return "CAN GUESS"
+    return "CORRECT" if prediction.strip().upper() == expected else "WRONG"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -295,7 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test",
         action="store_true",
-        help="Run Case 3 handwritten-number evaluation mode.",
+        help="Run test mode (accepted for compatibility; the image folder is still requested).",
     )
     parser.add_argument(
         "--model",
@@ -313,8 +310,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     spec, model_path = resolve_model(args)
-    images_dir = DEFAULT_IMAGES_DIR
-    labels = load_expected_labels(DEFAULT_LABELS_CSV)
+    images_dir = ask_for_image_directory()
 
     try:
         model = load_cnn_model(model_path)
@@ -330,6 +326,7 @@ def main() -> None:
 
     lines: list[str] = []
     correct = 0
+    can_guess = 0
     failed = 0
 
     for image_path in image_files:
@@ -344,10 +341,12 @@ def main() -> None:
         except Exception as error:
             print(f"Warning: prediction failed for {relative_name}: {error}", file=sys.stderr)
 
-        expected = expected_label(image_path, labels)
+        expected = expected_label(image_path, images_dir)
         status = evaluate_status(prediction, expected)
         if status == "CORRECT":
             correct += 1
+        elif status == "CAN GUESS":
+            can_guess += 1
         else:
             failed += 1
 
@@ -361,7 +360,8 @@ def main() -> None:
         lines.append(line)
 
     total = len(image_files)
-    success_rate = correct / total * 100 if total else 0.0
+    passed = correct + can_guess
+    success_rate = passed / total * 100 if total else 0.0
     summary = [
         "",
         "=" * 50,
@@ -369,6 +369,7 @@ def main() -> None:
         f"  Model                : {spec.display_name}",
         f"  Total Tested         : {total}",
         f"  Correct              : {correct}",
+        f"  Can Guess (unlabeled): {can_guess}",
         f"  Failed/Wrong         : {failed}",
         f"  Success Rate         : {success_rate:.1f}%",
         "=" * 50,

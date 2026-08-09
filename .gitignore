@@ -206,6 +206,23 @@ tempCodeRunnerFile.py
 # Generated segmentation output
 data/segmentation/processed/
 
+# Dataset folders should not be committed to GitHub.
+# Keep repository documentation files in data/ tracked, but ignore dataset contents.
+/data/data_train/
+/data/unseen_data/
+/data/synthetic-text/
+/data/Trash/
+
+!data/README.md
+!data/.gitignore
+!data/data_README.md
+!data/synthetic-text/
+!data/synthetic-text/README.md
+!data/Trash/
+!data/Trash/sample/README.md
+!data/Trash/words/
+!data/Trash/words/part1/README.md
+
 # Ruff stuff:
 .ruff_cache/
 

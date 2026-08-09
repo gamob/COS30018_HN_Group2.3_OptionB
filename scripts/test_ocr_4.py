@@ -1,374 +1,359 @@
 #!/usr/bin/env python3
-"""Test one of the project's CNN OCR models on every image in a folder.
+"""Evaluate test images and write results in the sample OCR text format.
 
-Examples:
-  python scripts/test_ocr.py
-  python scripts/test_ocr.py --test --model letter
-  python scripts/test_ocr.py --test --model number
-  python scripts/test_ocr.py --test --model alphanumeric
-  python scripts/test_ocr.py --model-file src/models/letter_cnn_model.h5
+Usage:
+  python scripts/test_ocr.py --dir <images_dir>
+  python scripts/test_ocr.py --dir <images_dir> --models-dir src/models
+  python scripts/test_ocr.py --dir <images_dir> --output desired_output.txt
 
-When --model is omitted, the script asks which model to use. It always asks
-for the image directory; there is deliberately no default image directory.
+The script prefers a supplied model file, otherwise it discovers the first
+supported model in --models-dir. If no project model can produce a text result,
+it falls back to pytesseract so the output still matches the requested format.
 """
 
-from __future__ import annotations
-
 import argparse
+import glob
 import pathlib
+import os
 import sys
-from dataclasses import dataclass
 
-import numpy as np
 from PIL import Image
+import numpy as np
 
+# Optional imports
 try:
     import pytesseract
 except Exception:
     pytesseract = None
 
+try:
+    import joblib
+except Exception:
+    joblib = None
+
+try:
+    import torch
+    import torchvision.transforms as T
+except Exception:
+    torch = None
+
+try:
+    import tensorflow as tf
+except Exception:
+    tf = None
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.preprocessing.preprocessing import center_and_resize, normalize_array
-from src.segmentation.segmentation import binarize_image, segment_digits, segment_letter_regions
+from src.models.model import load_alphanumeric_cnn_model, predict_alphanumeric
+from src.preprocessing.preprocessing import preprocess_image
+from src.segmentation.segmentation import segment_letter_regions
 
-
-MODELS_DIR = PROJECT_ROOT / "src" / "models"
-DEFAULT_IMAGES_DIR = PROJECT_ROOT / "data" / "unseen_data" / "Case#3" / "HandWritten_Alphabet"
+DEFAULT_IMAGES_DIR = PROJECT_ROOT / "data" / "unseen_data" / "Case#1"
+DEFAULT_TEST_IMAGES_DIR = DEFAULT_IMAGES_DIR / "Test"
+DEFAULT_MODELS_DIR = PROJECT_ROOT / "src" / "models"
+DEFAULT_MODEL_FILE = DEFAULT_MODELS_DIR / "alphanumeric_cnn_model.h5"
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "desired_output.txt"
-DEFAULT_MODEL_KEY = "letter"
-MAX_IMAGE_COUNT = 1000
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif"}
 
 
-@dataclass(frozen=True)
-class ModelSpec:
-    key: str
-    display_name: str
-    filename: str
-    labels: tuple[str, ...]
-    segmentation: str
-
-    @property
-    def path(self) -> pathlib.Path:
-        return MODELS_DIR / self.filename
-
-
-MODEL_SPECS = {
-    "letter": ModelSpec(
-        key="letter",
-        display_name="Letter CNN",
-        filename="letter_cnn_model.h5",
-        labels=tuple(chr(ord("A") + index) for index in range(26)),
-        segmentation="letters",
-    ),
-    "number": ModelSpec(
-        key="number",
-        display_name="Number CNN",
-        filename="digit_cnn_model.h5",
-        labels=tuple(str(index) for index in range(10)),
-        segmentation="digits",
-    ),
-    "alphanumeric": ModelSpec(
-        key="alphanumeric",
-        display_name="Alphanumeric CNN",
-        filename="alphanumeric_cnn_model.h5",
-        labels=tuple(str(index) for index in range(10))
-        + tuple(chr(ord("A") + index) for index in range(26)),
-        segmentation="letters",
-    ),
-}
-
-MODEL_ALIASES = {
-    "1": "letter",
-    "letter": "letter",
-    "letter-cnn": "letter",
-    "letter_cnn": "letter",
-    "letter_cnn_model.h5": "letter",
-    "2": "number",
-    "number": "number",
-    "number-cnn": "number",
-    "number_cnn": "number",
-    "digit": "number",
-    "digit-cnn": "number",
-    "digit_cnn": "number",
-    "digit_cnn_model.h5": "number",
-    "3": "alphanumeric",
-    "alphanumeric": "alphanumeric",
-    "alphanumeric-cnn": "alphanumeric",
-    "alphanumeric_cnn": "alphanumeric",
-    "alphanumeric_cnn_model.h5": "alphanumeric",
-}
-
-
-def normalize_model_choice(value: str) -> str | None:
-    normalized = str(value).strip().lower().replace(" ", "-")
-    return MODEL_ALIASES.get(normalized)
-
-
-def choose_model_interactively() -> ModelSpec:
-    print("Select model:")
-    print("  1. Letter CNN (A-Z)")
-    print("  2. Number CNN (0-9)")
-    print("  3. Alphanumeric CNN (0-9, A-Z)")
-    while True:
-        try:
-            choice = input("Model [1-3]: ").strip()
-        except EOFError:
-            print("Error: a model selection is required.", file=sys.stderr)
-            raise SystemExit(2)
-        key = normalize_model_choice(choice)
-        if key:
-            return MODEL_SPECS[key]
-        print("Please choose 1, 2, or 3.", file=sys.stderr)
-
-
-def infer_spec_from_model_path(model_path: pathlib.Path) -> ModelSpec | None:
-    key = normalize_model_choice(model_path.name)
-    return MODEL_SPECS[key] if key else None
-
-
-def resolve_model(args: argparse.Namespace) -> tuple[ModelSpec, pathlib.Path]:
-    if args.model:
-        key = normalize_model_choice(args.model)
-        if key:
-            spec = MODEL_SPECS[key]
-            return spec, spec.path
-
-        possible_path = pathlib.Path(args.model).expanduser()
-        if possible_path.is_file():
-            spec = infer_spec_from_model_path(possible_path)
-            if spec:
-                return spec, possible_path
-        print(
-            "Error: --model must be letter, number, alphanumeric, or a recognized model path.",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
-    if args.model_file:
-        model_path = pathlib.Path(args.model_file).expanduser()
-        spec = infer_spec_from_model_path(model_path)
-        if not spec:
-            print(
-                "Error: --model-file must point to a Letter, Number, or Alphanumeric CNN.",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        return spec, model_path
-
-    spec = MODEL_SPECS[DEFAULT_MODEL_KEY]
-    return spec, spec.path
-
-
-def load_cnn_model(model_path: pathlib.Path):
-    if not model_path.is_file():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-    try:
-        import tensorflow as tf
-    except Exception as error:
-        raise RuntimeError("TensorFlow is not installed.") from error
-    return tf.keras.models.load_model(model_path, compile=False)
-
-
-def image_to_grayscale(image: Image.Image) -> np.ndarray:
-    """Convert to grayscale without losing strokes stored in PNG transparency."""
-    if image.mode == "RGBA":
-        rgba = np.asarray(image)
-        rgb = rgba[..., :3]
-        alpha = rgba[..., 3]
-        if np.ptp(alpha) > 0 and np.ptp(rgb) == 0:
-            return alpha.astype(np.uint8)
-    return np.asarray(image.convert("L"), dtype=np.uint8)
-
-
-def segment_image(gray: np.ndarray, spec: ModelSpec) -> list[np.ndarray]:
-    if spec.segmentation == "digits":
-        segments = segment_digits(gray)
-    else:
-        segments = [region.image for region in segment_letter_regions(gray)]
-
-    if segments:
-        return segments
-
-    binary = binarize_image(gray)
-    return [binary] if np.any(binary) else []
-
-
-def preprocess_character(segment: np.ndarray) -> np.ndarray:
-    centered = center_and_resize(segment.astype(np.uint8), size=(28, 28), margin=4)
-    return normalize_array(centered).reshape(1, 28, 28, 1)
-
-
-def predict_image(model, spec: ModelSpec, image: Image.Image) -> tuple[str | None, float | None]:
-    segments = segment_image(image_to_grayscale(image), spec)
-    if not segments:
-        return None, None
-
-    characters: list[str] = []
-    confidences: list[float] = []
-    for segment in segments:
-        outputs = np.asarray(model.predict(preprocess_character(segment), verbose=0))
-        if outputs.ndim != 2 or outputs.shape[0] != 1:
-            raise ValueError(f"Unexpected model output shape: {outputs.shape}")
-        if outputs.shape[1] != len(spec.labels):
-            raise ValueError(
-                f"{spec.display_name} should have {len(spec.labels)} outputs, "
-                f"but the loaded model has {outputs.shape[1]}."
-            )
-        class_index = int(np.argmax(outputs[0]))
-        characters.append(spec.labels[class_index])
-        confidences.append(float(outputs[0, class_index]))
-
-    return "".join(characters), float(np.mean(confidences))
-
-
-def tesseract_ocr(image: Image.Image) -> tuple[str | None, float | None]:
-    if pytesseract is None:
-        return None, None
-    try:
-        data = pytesseract.image_to_data(
-            image,
-            config="--psm 6",
-            output_type=pytesseract.Output.DICT,
-        )
-        words: list[str] = []
-        confidences: list[float] = []
-        for text, raw_confidence in zip(data["text"], data["conf"]):
-            text = str(text).strip()
-            try:
-                confidence = float(raw_confidence)
-            except (TypeError, ValueError):
-                continue
-            if text and confidence >= 0:
-                words.append(text)
-                confidences.append(confidence / 100.0)
-        confidence = float(np.mean(confidences)) if confidences else None
-        return " ".join(words), confidence
-    except Exception:
-        return None, None
-
-
-def list_image_files(directory: pathlib.Path) -> list[pathlib.Path]:
-    return sorted(
-        (path for path in directory.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS),
-        key=lambda path: str(path.relative_to(directory)).lower(),
-    )
-
-
-def expected_label(image_path: pathlib.Path) -> str | None:
-    parent = image_path.parent.name.strip()
-    if not parent:
+def find_model_file(models_dir):
+    if not models_dir or not os.path.isdir(models_dir):
         return None
-    return parent.upper()
+    preferred = pathlib.Path(models_dir) / "alphanumeric_cnn_model.h5"
+    if preferred.exists():
+        return str(preferred)
+    exts = ("*.h5", "*.keras", "*.pkl", "*.joblib", "*.sav", "*.pt", "*.pth", "*.onnx")
+    for e in exts:
+        files = sorted(glob.glob(os.path.join(models_dir, e)))
+        if files:
+            return files[0]
+    return None
 
-
-def evaluate_status(prediction: str | None, expected: str | None) -> str:
-    if not prediction:
-        return "CANNOT GUESS"
-    if expected is None:
-        return "WRONG"
-    return "CORRECT" if prediction.strip() == expected else "WRONG"
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Test a CNN OCR model on an image directory.")
-    parser.add_argument(
-        "--test",
-        action="store_true",
-        help="Run Case 3 handwritten alphabetical evaluation mode.",
-    )
-    parser.add_argument(
-        "--model",
-        help="Model to test: letter, number, alphanumeric, or a recognized model path.",
-    )
-    parser.add_argument(
-        "--model-file",
-        help="Backward-compatible explicit CNN model path.",
-    )
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Output result file.")
-    parser.add_argument("--no-tesseract", action="store_true", help="Disable Tesseract fallback.")
-    return parser
-
-
-def main() -> None:
-    args = build_parser().parse_args()
-    spec, model_path = resolve_model(args)
-    images_dir = DEFAULT_IMAGES_DIR
-
+def load_model(model_path):
+    if not model_path:
+        return None, None
+    ext = pathlib.Path(model_path).suffix.lower()
+    filename = pathlib.Path(model_path).name.lower()
     try:
-        model = load_cnn_model(model_path)
+        if ext in (".pt", ".pth") and torch:
+            model = torch.load(model_path, map_location="cpu")
+            # If the saved object is a state_dict, user should customize this loader.
+            if isinstance(model, dict) and "state_dict" in model:
+                # Can't know architecture — user must integrate; return raw dict.
+                return model, "pytorch_state_dict"
+            if hasattr(model, "eval"):
+                model.eval()
+            return model, "pytorch"
+        if ext in (".h5", ".keras") and tf:
+            if filename == "alphanumeric_cnn_model.h5":
+                model = load_alphanumeric_cnn_model(model_path)
+                return model, "alphanumeric_cnn"
+            model = tf.keras.models.load_model(model_path)
+            return model, "keras"
+        if ext in (".pkl", ".joblib", ".sav") and joblib:
+            model = joblib.load(model_path)
+            return model, "sklearn"
+        if ext == ".onnx":
+            # ONNX requires onnxruntime; user can add support later
+            return None, None
+    except Exception as e:
+        print(f"Warning: failed to load model {model_path}: {e}", file=sys.stderr)
+        return None, None
+    return None, None
+
+def preprocess_for_pytorch(image, size=(224,224)):
+    # basic preprocess: convert to RGB, resize, to tensor, normalize
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    transform = T.Compose([
+        T.Resize(size),
+        T.ToTensor(),
+        T.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
+    ])
+    return transform(image).unsqueeze(0)  # batch dim
+
+def predict_alphanumeric_text(model, pil_img):
+    gray = np.array(pil_img.convert("L"), dtype=np.uint8)
+    segments = segment_letter_regions(gray)
+    if not segments:
+        processed = preprocess_image(
+            gray,
+            size=(28, 28),
+            method="otsu",
+            blur_ksize=5,
+            adaptive_params=(15, 7),
+            thresh=128,
+            invert=False,
+            normalize=True,
+            margin=4,
+        )
+        return predict_alphanumeric(model, processed)
+
+    predictions = []
+    for segment in segments:
+        padding = max(2, int(round(max(segment.image.shape) * 0.15)))
+        padded = np.pad(segment.image, padding, mode="constant", constant_values=0)
+        processed = preprocess_image(
+            padded,
+            size=(28, 28),
+            method="otsu",
+            blur_ksize=5,
+            adaptive_params=(15, 7),
+            thresh=128,
+            invert=False,
+            normalize=True,
+            margin=4,
+        )
+        predictions.append(predict_alphanumeric(model, processed))
+
+    return "".join(predictions)
+
+
+def predict_with_model(model_tuple, pil_img, image_name=""):
+    model, mtype = model_tuple
+    if model is None:
+        return None
+    try:
+        if mtype == "alphanumeric_cnn":
+            try:
+                return predict_alphanumeric_text(model, pil_img)
+            except Exception as error:
+                print(f"Warning: alphanumeric prediction failed for {image_name}: {error}", file=sys.stderr)
+                return None
+        if mtype == "pytorch" and torch:
+            try:
+                x = preprocess_for_pytorch(pil_img)
+                with torch.no_grad():
+                    out = model(x)
+                # best-effort: if classification logits, pick top-1 and return str
+                if hasattr(out, "argmax"):
+                    pred_idx = int(out.argmax(dim=1).cpu().numpy()[0])
+                    # we don't have label mapping; return index as a string
+                    return str(pred_idx)
+                # if model returns text directly (rare), convert to str
+                return str(out)
+            except Exception:
+                return None
+        if mtype == "keras" and tf:
+            try:
+                arr = np.array(pil_img.convert("RGB").resize((224,224))).astype("float32")/255.0
+                arr = np.expand_dims(arr, 0)
+                out = model.predict(arr)
+                # best-effort: if a vector, return argmax index
+                if isinstance(out, np.ndarray):
+                    if out.ndim == 2:
+                        pred_idx = int(out.argmax(axis=1)[0])
+                        return str(pred_idx)
+                    return str(out.tolist())
+                return str(out)
+            except Exception as error:
+                print(f"Warning: keras prediction failed for {image_name}: {error}", file=sys.stderr)
+                return None
+        if mtype in ("sklearn", "sklearn-like"):
+            try:
+                arr = np.array(pil_img.convert("L").resize((28, 28))).astype("float32").flatten()[None, :]
+                if hasattr(model, "predict"):
+                    out = model.predict(arr)
+                    if isinstance(out, (list, tuple, np.ndarray)):
+                        return str(out[0])
+                    return str(out)
+            except Exception as error:
+                print(f"Warning: sklearn prediction failed for {image_name}: {error}", file=sys.stderr)
+                return None
+        if mtype == "pytorch_state_dict":
+            # can't use without model architecture
+            return None
     except Exception as error:
-        print(f"Error: could not load {spec.display_name}: {error}", file=sys.stderr)
-        raise SystemExit(2)
+        print(f"Warning: prediction failed for {image_name}: {error}", file=sys.stderr)
+        return None
+    return None
 
-    print(f"Using model: {model_path} ({spec.display_name})")
+def tesseract_ocr(pil_img):
+    if not pytesseract:
+        return None
+    try:
+        txt = pytesseract.image_to_string(pil_img, config='--psm 6').strip()
+        return txt
+    except Exception:
+        return None
+
+def is_cannot_guess(pred):
+    if pred is None:
+        return True
+    s = str(pred).strip()
+    if s == "" or s == "???" or s.lower() == "unknown":
+        return True
+    return False
+
+
+def normalize_label(value: str) -> str:
+    return str(value).strip().lower()
+
+
+def get_expected_label(image_path: pathlib.Path, root: pathlib.Path) -> str:
+    relative = image_path.relative_to(root)
+    if len(relative.parts) < 2:
+        return ""
+    return normalize_label(relative.parts[-2])
+
+def list_image_files(dirpath):
+    exts = ("*.png", "*.jpg", "*.jpeg", "*.tiff", "*.bmp", "*.gif")
+    root = pathlib.Path(dirpath)
+    files = []
+    for ext in exts:
+        files.extend(root.rglob(ext))
+    files = sorted(files, key=lambda p: str(p.relative_to(root)).lower())
+    return files
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate OCR model(s) on a directory of test images.")
+    parser.add_argument("--dir", default=str(DEFAULT_IMAGES_DIR), help="Directory containing test images")
+    parser.add_argument("--test", action="store_true", help="Force evaluation on Case#1\\Test only")
+    parser.add_argument("--models-dir", default=str(DEFAULT_MODELS_DIR), help="Directory containing model files")
+    parser.add_argument("--model-file", default=str(DEFAULT_MODEL_FILE), help="Specific model file to load (overrides models-dir)")
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Output text file")
+    parser.add_argument("--no-tesseract", action="store_true", help="Disable fallback to pytesseract")
+    args = parser.parse_args()
+
+    images_dir = DEFAULT_TEST_IMAGES_DIR if args.test else pathlib.Path(args.dir)
+    if not images_dir.is_dir():
+        print(f"Error: images directory not found: {images_dir}", file=sys.stderr)
+        sys.exit(2)
+
+    model_file = args.model_file
+    if model_file and not os.path.isfile(model_file) and args.models_dir:
+        model_file = find_model_file(args.models_dir)
+    elif not model_file and args.models_dir:
+        model_file = find_model_file(args.models_dir)
+
+    model, mtype = load_model(model_file) if model_file else (None, None)
+    if model_file:
+        print(f"Using model: {model_file} (type={mtype})")
+    else:
+        print("No usable model file found. Will use pytesseract if available (unless --no-tesseract).")
+
+    model_tuple = (model, mtype)
+
     image_files = list_image_files(images_dir)
-    image_files = image_files[:MAX_IMAGE_COUNT]
     if not image_files:
-        print("Error: no images found in directory.", file=sys.stderr)
-        raise SystemExit(3)
+        print("No images found in directory.", file=sys.stderr)
+        sys.exit(3)
 
-    lines: list[str] = []
-    correct = 0
+    lines = []
+    total = 0
+    passed = 0
     failed = 0
 
-    for image_path in image_files:
-        relative_name = str(image_path.relative_to(images_dir))
-        prediction = None
-        confidence = None
+    for img_path in image_files:
+        total += 1
+        relative_name = str(img_path.relative_to(images_dir))
+        expected_label = get_expected_label(img_path, images_dir)
         try:
-            with Image.open(image_path) as image:
-                prediction, confidence = predict_image(model, spec, image)
-                if not prediction and not args.no_tesseract:
-                    prediction, confidence = tesseract_ocr(image)
-        except Exception as error:
-            print(f"Warning: prediction failed for {relative_name}: {error}", file=sys.stderr)
-
-        expected = expected_label(image_path)
-        status = evaluate_status(prediction, expected)
-        if status == "CORRECT":
-            correct += 1
+            pil_img = Image.open(img_path)
+        except Exception as e:
+            print(f"Warning: failed to open {relative_name}: {e}", file=sys.stderr)
+            pred = ""
+            cannot = True
         else:
+            pred = None
+            # 1) Try model if available
+            if model is not None:
+                p = predict_with_model(model_tuple, pil_img, relative_name)
+                if p is not None:
+                    pred = p
+            # 2) Fall back to tesseract if enabled
+            if (pred is None or str(pred).strip() == "") and (not args.no_tesseract) and pytesseract:
+                p2 = tesseract_ocr(pil_img)
+                if p2 is not None:
+                    pred = p2
+            if pred is None:
+                pred = ""
+            cannot = is_cannot_guess(pred)
+
+        predicted_label = normalize_label(pred)
+        if cannot:
+            status = "CANNOT GUESS"
+            failed += 1
+        elif expected_label and predicted_label == expected_label:
+            status = "CORRECT"
+            passed += 1
+        else:
+            status = "WRONG"
             failed += 1
 
-        display_prediction = str(prediction or "").replace("\n", " ").strip()
-        display_confidence = f"{confidence * 100:.2f}%" if confidence is not None else "N/A"
-        line = (
-            f'Testing {relative_name} ... Predicted: "{display_prediction}" '
-            f"Confidence: {display_confidence}    --> [{status}]"
-        )
+        # Format: Testing image_001.png ... Predicted: "Coffee Shop"    --> [CORRECT]
+        display_pred = str(pred).replace('\n', ' ').strip()
+        # keep empty string shown as "" in output
+        line = f'Testing {relative_name} ... Predicted: "{display_pred}"    --> [{status}]'
         print(line)
         lines.append(line)
 
-    total = len(image_files)
-    success_rate = correct / total * 100 if total else 0.0
-    summary = [
-        "",
-        "=" * 50,
-        "SUMMARY:",
-        f"  Model                : {spec.display_name}",
-        f"  Image Limit          : {MAX_IMAGE_COUNT}",
-        f"  Total Tested         : {total}",
-        f"  Correct              : {correct}",
-        f"  Failed/Wrong         : {failed}",
-        f"  Success Rate         : {success_rate:.1f}%",
-        "=" * 50,
-    ]
-    for line in summary:
-        print(line)
-        lines.append(line)
+    # summary block
+    success_rate = (passed/total*100) if total > 0 else 0.0
+    summary = []
+    summary.append("")
+    summary.append("="*50)
+    summary.append("SUMMARY:")
+    summary.append(f"  Total Tested         : {total}")
+    summary.append(f"  Passed (Correct)     : {passed}")
+    summary.append(f"  Failed (Wrong/Guess) : {failed}")
+    # format with one decimal if needed, match sample like 66.7%
+    summary.append(f"  Success Rate         : {success_rate:.1f}%")
+    summary.append("="*50)
 
-    output_path = pathlib.Path(args.output)
+    for s in summary:
+        print(s)
+        lines.append(s)
+
+    # write to output file
     try:
-        output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"\nWrote results to {output_path}")
-    except Exception as error:
-        print(f"Warning: could not write output file: {error}", file=sys.stderr)
-
+        with open(args.output, "w", encoding="utf-8") as f:
+            for l in lines:
+                f.write(l + "\n")
+        print(f"\nWrote results to {args.output}")
+    except Exception as e:
+        print(f"Warning: could not write output file: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
